@@ -2,7 +2,7 @@
 
 # Sharpz
 
-### A dark portfolio-style image cleanup, vectorization, and texture conversion workspace.
+### A portfolio-style image cleanup, vectorization, and texture conversion workspace.
 
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=for-the-badge&logo=python&logoColor=ffffff)](https://www.python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?style=for-the-badge&logo=fastapi&logoColor=ffffff)](https://fastapi.tiangolo.com)
@@ -11,7 +11,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=ffffff)](https://www.typescriptlang.org)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38BDF8?style=for-the-badge&logo=tailwindcss&logoColor=111111)](https://tailwindcss.com)
 
-Private production tool by [opZywl](https://github.com/opZywl), styled after the dark portfolio interface.
+Private production tool by [opZywl](https://github.com/opZywl), styled after the portfolio interface with real light/dark themes.
 
 </div>
 
@@ -30,7 +30,9 @@ Sharpz is a local-first utility for preparing images and textures:
 - Export a clean transparent PNG.
 - Convert raster images to SVG with both background and transparent variants.
 - Convert PNG/JPG textures to KTX2 for 3D pipelines.
-- Run everything from a dark web dashboard, FastAPI endpoints, Gradio, or CLI.
+- Patch missing `KTXorientation=rd` metadata.
+- Generate portfolio-ready 960x540 KTX textures through `alktx2`.
+- Run everything from the web dashboard, FastAPI endpoints, Gradio, or CLI.
 
 ## Web App
 
@@ -70,21 +72,29 @@ http://127.0.0.1:8000
 | Pipeline | Remove background and generate PNG + SVG outputs in one pass. |
 | Remover Fundo | Fine control over AI, alpha matting, luma keying, color, and edge cleanup. |
 | PNG -> SVG | Direct vtracer controls for color mode, hierarchy, path mode, and precision. |
+| Batch Pipeline | Run the CLI cleanup/SVG workflow over local files or folders. |
 | PNG -> KTX | Single-file KTX2 conversion for uploaded textures. |
 | Batch KTX | Local folder batch conversion with recursive and flattened output modes. |
+| Patch KTX | Add `KTXorientation=rd` to uploaded KTX/KTX2 files. |
+| Portfolio KTX | Fit images into the portfolio 960x540 canvas and encode via `alktx2`. |
+| Sistema | Inspect API capabilities, endpoints, models, and encoder status. |
 
 ## API
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
 | `/api/health` | GET | API health check. |
+| `/api/capabilities` | GET | Live module, endpoint, model, and encoder status. |
 | `/api/models` | GET | Available rembg models. |
 | `/api/pipeline` | POST | Full image cleanup + SVG pipeline. |
 | `/api/clean` | POST | Background removal only. |
 | `/api/svg` | POST | Vectorization only. |
+| `/api/batch/pipeline` | POST | Batch cleanup/SVG pipeline for local paths. |
 | `/api/ktx/presets` | GET | KTX preset list and `toktx` status. |
 | `/api/ktx/single` | POST | Convert one uploaded image to KTX. |
 | `/api/ktx/batch` | POST | Convert a local folder to KTX. |
+| `/api/ktx/orientation` | POST | Patch uploaded KTX/KTX2 orientation metadata. |
+| `/api/ktx/portfolio` | POST | Convert uploaded image to portfolio 960x540 KTX. |
 
 ## CLI
 
@@ -114,7 +124,8 @@ python ktx_cli.py texture.png -o texture.ktx --preset ultra
 
 ## KTX Setup
 
-KTX conversion requires `toktx` from KTX-Software in your PATH.
+The standard KTX workspaces require `toktx` from KTX-Software in your PATH.
+The portfolio 960x540 workspace uses the Python package `alktx2`, installed through `requirements.txt`.
 
 - Windows: install KTX-Software from GitHub Releases and enable "Add to PATH".
 - Linux: install `ktx-tools` when available.
@@ -134,6 +145,8 @@ sharpz/
   server.py               # FastAPI backend for the Next.js dashboard
   cli.py                  # Background removal + SVG CLI
   ktx_cli.py              # KTX2 CLI
+  add_ktx_orientation.py  # KTXorientation patch helper
+  convert_liquidlauncher.py # Portfolio 960x540 conversion reference
   src/
     processor.py          # Core cleanup and SVG pipeline
     ktx.py                # KTX conversion engine

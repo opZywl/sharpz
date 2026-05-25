@@ -9,3 +9,4 @@ resvg-py>=0.3.0
 # KTX2 module reutiliza Pillow/numpy. scikit-image (opcional) pra
 # validacao PSNR/SSIM do output comprimido vs input original.
 scikit-image>=0.22.0
+alktx2>=0.1.6

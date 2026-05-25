@@ -25,6 +25,29 @@
         --ring: 240 10% 3.9%;
         --surface: 240 4.8% 95.9%;
         --radius: 0.5rem;
+        --app-bg: #f4f4f5;
+        --app-bg-soft: #ffffff;
+        --app-panel: rgba(255, 255, 255, 0.82);
+        --app-panel-strong: rgba(255, 255, 255, 0.94);
+        --app-card: rgba(250, 250, 250, 0.92);
+        --app-card-muted: rgba(244, 244, 245, 0.8);
+        --app-text: #111113;
+        --app-muted: #606068;
+        --app-faint: #8a8a93;
+        --app-border: rgba(24, 24, 27, 0.12);
+        --app-border-strong: rgba(24, 24, 27, 0.22);
+        --app-hover: rgba(24, 24, 27, 0.055);
+        --app-input: rgba(255, 255, 255, 0.86);
+        --app-accent: #111113;
+        --app-accent-text: #ffffff;
+        --app-shadow: 0 28px 80px rgba(15, 15, 18, 0.12);
+        --app-grid: rgba(20, 20, 24, 0.075);
+        --app-dot: rgba(20, 20, 24, 0.12);
+        --app-good: #047857;
+        --app-warn: #b45309;
+        --app-bad: #dc2626;
+        --checker-a: rgba(24, 24, 27, 0.09);
+        --checker-b: rgba(255, 255, 255, 0.82);
     }
 
     [data-theme="dark"] {
@@ -48,20 +71,307 @@
         --border: 240 3.7% 15.9%;
         --input: 240 3.7% 15.9%;
         --ring: 240 4.9% 83.9%;
+        --app-bg: #070707;
+        --app-bg-soft: #0d0c0d;
+        --app-panel: rgba(17, 15, 16, 0.76);
+        --app-panel-strong: rgba(18, 17, 18, 0.94);
+        --app-card: rgba(31, 31, 34, 0.38);
+        --app-card-muted: rgba(38, 38, 42, 0.28);
+        --app-text: #f4f4f5;
+        --app-muted: #a1a1aa;
+        --app-faint: #71717a;
+        --app-border: rgba(255, 255, 255, 0.1);
+        --app-border-strong: rgba(255, 255, 255, 0.18);
+        --app-hover: rgba(255, 255, 255, 0.055);
+        --app-input: rgba(31, 31, 34, 0.5);
+        --app-accent: #fafafa;
+        --app-accent-text: #111113;
+        --app-shadow: 0 34px 90px rgba(0, 0, 0, 0.42);
+        --app-grid: rgba(255, 255, 255, 0.055);
+        --app-dot: rgba(255, 255, 255, 0.16);
+        --app-good: #34d399;
+        --app-warn: #f59e0b;
+        --app-bad: #f87171;
+        --checker-a: rgba(255, 255, 255, 0.085);
+        --checker-b: rgba(0, 0, 0, 0.18);
     }
 
     * {
         @apply border-border;
     }
     html, body {
-        background-color: hsl(var(--background));
-        color: hsl(var(--foreground));
+        background-color: var(--app-bg);
+        color: var(--app-text);
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
     body {
         font-family: var(--font-space-grotesk), system-ui, sans-serif;
     }
+}
+
+.app-page {
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at top left, var(--app-grid), transparent 30%),
+        linear-gradient(135deg, color-mix(in srgb, var(--app-text) 4%, transparent), transparent 46%),
+        var(--app-bg);
+    color: var(--app-text);
+}
+
+.app-grid-layer {
+    background-image:
+        linear-gradient(var(--app-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--app-grid) 1px, transparent 1px);
+    background-size: 44px 44px;
+    opacity: 0.55;
+}
+
+.dashboard-shell {
+    position: relative;
+    border-radius: 0.75rem;
+    border: 1px solid var(--app-border);
+    background: color-mix(in srgb, var(--app-panel-strong) 82%, transparent);
+    padding: 2px;
+    box-shadow: var(--app-shadow);
+}
+
+.dashboard-inner {
+    position: relative;
+    overflow: visible;
+    border-radius: 0.7rem;
+    border: 1px solid var(--app-border);
+    background: var(--app-panel);
+    color: var(--app-text);
+    backdrop-filter: blur(18px);
+}
+
+.dashboard-dot-layer {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    opacity: 0.34;
+    background-image: radial-gradient(circle, var(--app-dot) 0.55px, transparent 0.55px);
+    background-size: 18px 18px;
+}
+
+.panel-icon,
+.sidebar-icon {
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--app-border);
+    background: var(--app-card-muted);
+    color: var(--app-text);
+}
+
+.app-muted {
+    color: var(--app-muted);
+}
+
+.app-faint {
+    color: var(--app-faint);
+}
+
+.field-label {
+    padding-inline: 0.25rem;
+    color: var(--app-faint);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.field-control {
+    min-height: 2.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--app-border);
+    background: var(--app-input);
+    color: var(--app-text);
+    outline: none;
+    transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.field-control:hover {
+    border-color: var(--app-border-strong);
+    background: color-mix(in srgb, var(--app-input) 88%, var(--app-hover));
+}
+
+.field-control:focus,
+.field-control:focus-visible {
+    border-color: var(--app-border-strong);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-text) 10%, transparent);
+}
+
+.app-input {
+    height: 2.75rem;
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid var(--app-border);
+    background: var(--app-input);
+    color: var(--app-text);
+    padding-inline: 0.75rem;
+    outline: none;
+}
+
+.app-input::placeholder {
+    color: var(--app-faint);
+}
+
+.select-menu {
+    position: absolute;
+    z-index: 70;
+    left: 0;
+    right: 0;
+    top: calc(100% + 0.5rem);
+    max-height: 17rem;
+    overflow: auto;
+    border-radius: 0.75rem;
+    border: 1px solid var(--app-border-strong);
+    background: var(--app-panel-strong);
+    box-shadow: var(--app-shadow);
+    padding: 0.3rem;
+    backdrop-filter: blur(18px);
+}
+
+.select-option {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-radius: 0.55rem;
+    padding: 0.62rem 0.7rem;
+    color: var(--app-muted);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-align: left;
+    text-transform: uppercase;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+.select-option:hover,
+.select-option[data-active="true"] {
+    background: var(--app-hover);
+    color: var(--app-text);
+}
+
+.checkbox-row,
+.metric-tile,
+.preview-card,
+.empty-state,
+.status-card {
+    border: 1px solid var(--app-border);
+    background: var(--app-card);
+    color: var(--app-text);
+}
+
+.checkbox-row {
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+}
+
+.checkbox-row:hover {
+    background: color-mix(in srgb, var(--app-card) 85%, var(--app-hover));
+}
+
+.metric-tile {
+    border-radius: 0.75rem;
+    padding: 0.7rem 0.75rem;
+}
+
+.preview-card {
+    overflow: hidden;
+    border-radius: 0.75rem;
+}
+
+.preview-head {
+    border-bottom: 1px solid var(--app-border);
+    background: color-mix(in srgb, var(--app-card) 80%, transparent);
+}
+
+.preview-body {
+    background: color-mix(in srgb, var(--app-bg) 72%, var(--app-card));
+}
+
+.empty-state {
+    border-style: dashed;
+    border-radius: 0.75rem;
+}
+
+.sidebar-item {
+    color: var(--app-muted);
+}
+
+.sidebar-item:hover,
+.sidebar-item[data-active="true"] {
+    background: var(--app-hover);
+    color: var(--app-text);
+}
+
+.status-pill {
+    border-radius: 999px;
+    border: 1px solid var(--app-border);
+    background: var(--app-card-muted);
+    color: var(--app-muted);
+}
+
+.status-pill[data-tone="good"] {
+    border-color: color-mix(in srgb, var(--app-good) 35%, transparent);
+    background: color-mix(in srgb, var(--app-good) 12%, transparent);
+    color: var(--app-good);
+}
+
+.status-pill[data-tone="warn"] {
+    border-color: color-mix(in srgb, var(--app-warn) 35%, transparent);
+    background: color-mix(in srgb, var(--app-warn) 12%, transparent);
+    color: var(--app-warn);
+}
+
+.status-pill[data-tone="bad"] {
+    border-color: color-mix(in srgb, var(--app-bad) 35%, transparent);
+    background: color-mix(in srgb, var(--app-bad) 12%, transparent);
+    color: var(--app-bad);
+}
+
+.app-codeblock {
+    border: 1px solid var(--app-border);
+    background: color-mix(in srgb, var(--app-bg) 84%, black 8%);
+    color: var(--app-muted);
+}
+
+.app-alert {
+    border: 1px solid color-mix(in srgb, var(--app-bad) 28%, transparent);
+    background: color-mix(in srgb, var(--app-bad) 10%, transparent);
+    color: var(--app-bad);
+}
+
+.dropzone-shell {
+    border: 1px dashed var(--app-border-strong);
+    background: var(--app-card-muted);
+    color: var(--app-text);
+}
+
+.dropzone-shell:hover,
+.dropzone-shell[data-dragging="true"] {
+    border-color: var(--app-border-strong);
+    background: var(--app-hover);
+}
+
+.dropzone-icon {
+    border: 1px solid var(--app-border);
+    background: var(--app-card);
+    color: var(--app-muted);
+}
+
+.theme-icon-button {
+    border: 1px solid var(--app-border);
+    background: var(--app-card);
+    color: var(--app-text);
+}
+
+.theme-icon-button:hover {
+    background: var(--app-hover);
 }
 
 /* Win11-style slider (matches portfolio) */
@@ -71,7 +381,7 @@
     height: 4px;
     border-radius: 10px;
     outline: none;
-    background: hsl(var(--secondary));
+    background: color-mix(in srgb, var(--app-text) 13%, transparent);
     cursor: pointer;
 }
 .win11-slider::-webkit-slider-thumb {
@@ -81,7 +391,7 @@
     height: 20px;
     border-radius: 50%;
     background: #4cc2ff;
-    border: 5px solid #454545;
+    border: 5px solid color-mix(in srgb, var(--app-bg) 65%, #454545);
     cursor: pointer;
     transition: border-width 0.1s ease, background 0.1s ease;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
@@ -98,7 +408,7 @@
     height: 20px;
     border-radius: 50%;
     background: #4cc2ff;
-    border: 5px solid #454545;
+    border: 5px solid color-mix(in srgb, var(--app-bg) 65%, #454545);
     cursor: pointer;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
@@ -106,10 +416,11 @@
 /* Checkerboard for transparent image previews */
 .checker {
     background-image:
-        linear-gradient(45deg, hsl(var(--muted)) 25%, transparent 25%),
-        linear-gradient(-45deg, hsl(var(--muted)) 25%, transparent 25%),
-        linear-gradient(45deg, transparent 75%, hsl(var(--muted)) 75%),
-        linear-gradient(-45deg, transparent 75%, hsl(var(--muted)) 75%);
+        linear-gradient(45deg, var(--checker-a) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--checker-a) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--checker-a) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--checker-a) 75%);
+    background-color: var(--checker-b);
     background-size: 20px 20px;
     background-position: 0 0, 0 10px, 10px -10px, 10px 0;
 }

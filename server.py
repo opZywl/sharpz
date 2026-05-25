@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import io
+import importlib.util
 import tempfile
 import time
 from dataclasses import replace as dc_replace
@@ -35,6 +36,7 @@ from src.processor import (
     VectorOptions,
     _pick_chroma_key,  # noqa: PLC2701
     png_to_svg,
+    process_image,
     remove_background,
     strip_chroma_paths,
 )
@@ -48,6 +50,7 @@ from src.ktx import (
     list_presets as ktx_list_presets,
     summarize as ktx_summarize,
 )
+from add_ktx_orientation import patch_orientation
 
 
 app = FastAPI(title="Cleanup Image API", version="1.0.0")
@@ -60,6 +63,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+SUPPORTED_BATCH_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
+PORTFOLIO_KTX_WIDTH = 960
+PORTFOLIO_KTX_HEIGHT = 540
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -80,12 +88,63 @@ def _img_to_b64_png(img: Image.Image) -> str:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+async def _read_upload_image(file: UploadFile) -> tuple[bytes, Image.Image]:
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    try:
+        src_img = Image.open(io.BytesIO(raw))
+        src_img.load()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid image: {exc}") from exc
+    return raw, src_img
+
+
 def _render_svg_to_b64_png(svg: str, max_dim: int = 800, background: str | None = None) -> str:
     kwargs: dict = dict(svg_string=svg, width=max_dim, height=max_dim)
     if background is not None:
         kwargs["background"] = background
     png_bytes = bytes(resvg_py.svg_to_bytes(**kwargs))
     return base64.b64encode(png_bytes).decode("ascii")
+
+
+def _has_python_module(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
+def _safe_download_name(name: str | None, default: str, suffix: str) -> str:
+    raw = Path(name or default).name.strip()
+    safe = "".join(ch for ch in raw if ch.isalnum() or ch in "._- ")
+    safe = safe.strip(" .") or default
+    if not safe.lower().endswith(suffix):
+        safe += suffix
+    return safe
+
+
+def _collect_pipeline_inputs(path: Path, recursive: bool = True) -> list[Path]:
+    if path.is_file():
+        return [path] if path.suffix.lower() in SUPPORTED_BATCH_EXT else []
+    if path.is_dir():
+        pattern = "**/*" if recursive else "*"
+        return sorted(p for p in path.glob(pattern) if p.is_file() and p.suffix.lower() in SUPPORTED_BATCH_EXT)
+    return []
+
+
+def _fit_to_portfolio_canvas(img: Image.Image, output_path: Path) -> tuple[tuple[int, int], tuple[int, int]]:
+    src = img.convert("RGB")
+    width, height = src.size
+    scale = min(PORTFOLIO_KTX_WIDTH / width, PORTFOLIO_KTX_HEIGHT / height)
+    target_w = max(4, int(round(width * scale)) // 4 * 4)
+    target_h = max(4, int(round(height * scale)) // 4 * 4)
+
+    resized = src.resize((target_w, target_h), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", (PORTFOLIO_KTX_WIDTH, PORTFOLIO_KTX_HEIGHT), (0, 0, 0))
+    offset_x = (PORTFOLIO_KTX_WIDTH - target_w) // 2
+    offset_y = (PORTFOLIO_KTX_HEIGHT - target_h) // 2
+    canvas.paste(resized, (offset_x, offset_y))
+    canvas.save(output_path, format="PNG")
+    return (width, height), (target_w, target_h)
 
 
 # ────────── Models ──────────
@@ -164,12 +223,91 @@ class KtxBatchResponse(BaseModel):
     output_dir: str | None = None
 
 
+class CapabilityResponse(BaseModel):
+    status: str
+    models_count: int
+    toktx_found: bool
+    alktx2_found: bool
+    default_model: str
+    default_ktx_preset: str
+    modules: list[str]
+    endpoints: list[str]
+
+
+class BatchPipelineFile(BaseModel):
+    input_path: str
+    success: bool
+    outputs: list[str] = []
+    method_used: str | None = None
+    duration_ms: int = 0
+    error: str | None = None
+
+
+class BatchPipelineResponse(BaseModel):
+    success: bool
+    summary: str
+    total: int = 0
+    success_count: int = 0
+    failure_count: int = 0
+    output_dir: str | None = None
+    files: list[BatchPipelineFile] = []
+
+
+class KtxPatchResponse(BaseModel):
+    success: bool
+    summary: str
+    filename: str | None = None
+    ktx_b64: str | None = None
+    saved_path: str | None = None
+    size_input: int = 0
+    size_output: int = 0
+
+
+class PortfolioKtxResponse(BaseModel):
+    success: bool
+    summary: str
+    filename: str | None = None
+    ktx_b64: str | None = None
+    saved_path: str | None = None
+    duration_ms: int = 0
+    size_input: int = 0
+    size_output: int = 0
+    target_width: int = PORTFOLIO_KTX_WIDTH
+    target_height: int = PORTFOLIO_KTX_HEIGHT
+
+
 # ────────── Endpoints ──────────
 
 
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/capabilities", response_model=CapabilityResponse)
+async def capabilities() -> CapabilityResponse:
+    endpoints = sorted(
+        route.path
+        for route in app.routes
+        if getattr(route, "path", "").startswith("/api")
+    )
+    return CapabilityResponse(
+        status="ok",
+        models_count=len(AVAILABLE_MODELS),
+        toktx_found=ktx_find_toktx() is not None,
+        alktx2_found=_has_python_module("alktx2"),
+        default_model=DEFAULT_MODEL,
+        default_ktx_preset=KTX_DEFAULT_PRESET,
+        modules=[
+            "background_removal",
+            "svg_vectorization",
+            "pipeline_batch",
+            "ktx_toktx",
+            "ktx_orientation_patch",
+            "portfolio_ktx_960x540",
+        ],
+        endpoints=endpoints,
+    )
 
 
 @app.get("/api/models", response_model=ModelsResponse)
@@ -203,14 +341,7 @@ async def clean_image(
     use_bg_color: bool = Form(False),
     bg_color: str = Form("#ffffff"),
 ) -> CleanResponse:
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=400, detail="Empty file")
-
-    try:
-        src_img = Image.open(io.BytesIO(raw))
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {exc}") from exc
+    _, src_img = await _read_upload_image(file)
 
     bg_opts = BackgroundOptions(
         method=method,
@@ -266,14 +397,7 @@ async def vectorize_image(
     upscale: float = Form(1.0),
     flatten_color: str = Form("#000000"),
 ) -> SvgResponse:
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=400, detail="Empty file")
-
-    try:
-        src_img = Image.open(io.BytesIO(raw))
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {exc}") from exc
+    _, src_img = await _read_upload_image(file)
 
     vec_opts = VectorOptions(
         color_mode=color_mode,
@@ -334,14 +458,7 @@ async def pipeline(
     upscale: float = Form(1.0),
     flatten_color: str = Form("#000000"),
 ) -> PipelineResponse:
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=400, detail="Empty file")
-
-    try:
-        src_img = Image.open(io.BytesIO(raw))
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {exc}") from exc
+    _, src_img = await _read_upload_image(file)
 
     bg_opts = BackgroundOptions(
         method=method,
@@ -422,14 +539,7 @@ async def ktx_single(
     if ktx_find_toktx() is None:
         return KtxSingleResponse(success=False, summary=ktx_install_hint())
 
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=400, detail="Empty file")
-
-    try:
-        image = Image.open(io.BytesIO(raw))
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {exc}") from exc
+    _, image = await _read_upload_image(file)
 
     filename_stem = Path(file.filename or "texture").stem or "texture"
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -520,6 +630,281 @@ async def ktx_batch(
         summary=ktx_summarize(results),
         input_count=len(images),
         output_dir=str(out),
+    )
+
+
+@app.post("/api/batch/pipeline", response_model=BatchPipelineResponse)
+async def batch_pipeline(
+    input_path: str = Form(...),
+    output_dir: str = Form("output"),
+    recursive: bool = Form(True),
+    method: Literal["auto", "ai", "luma_dark", "luma_light", "none"] = Form("auto"),
+    model: str = Form(DEFAULT_MODEL),
+    alpha_matting: bool = Form(True),
+    alpha_matting_foreground_threshold: int = Form(240),
+    alpha_matting_background_threshold: int = Form(10),
+    alpha_matting_erode_size: int = Form(10),
+    luma_low: float = Form(0.04),
+    luma_high: float = Form(0.95),
+    luma_unpremultiply: bool = Form(True),
+    luma_denoise: int = Form(0),
+    luma_gamma: float = Form(1.0),
+    saturation: float = Form(1.0),
+    contrast: float = Form(1.0),
+    brightness: float = Form(1.0),
+    edge_smooth: bool = Form(False),
+    no_svg: bool = Form(False),
+    no_bg_removal: bool = Form(False),
+    color_mode: Literal["color", "binary"] = Form("color"),
+    hierarchical: Literal["stacked", "cutout"] = Form("stacked"),
+    path_mode: Literal["spline", "polygon", "none"] = Form("spline"),
+    filter_speckle: int = Form(2),
+    color_precision: int = Form(8),
+    layer_difference: int = Form(8),
+    corner_threshold: int = Form(60),
+    length_threshold: float = Form(4.0),
+    max_iterations: int = Form(10),
+    splice_threshold: int = Form(45),
+    path_precision: int = Form(10),
+    upscale: float = Form(1.0),
+    flatten_color: str = Form("#000000"),
+) -> BatchPipelineResponse:
+    source = Path(input_path).expanduser().resolve()
+    out = Path(output_dir).expanduser().resolve()
+
+    if not source.exists():
+        return BatchPipelineResponse(success=False, summary=f"Input not found: {source}")
+
+    inputs = _collect_pipeline_inputs(source, recursive=recursive)
+    if not inputs:
+        return BatchPipelineResponse(success=False, summary=f"No supported images found in {source}")
+
+    out.mkdir(parents=True, exist_ok=True)
+
+    bg_opts = BackgroundOptions(
+        method=method,
+        model=model,
+        alpha_matting=alpha_matting,
+        alpha_matting_foreground_threshold=alpha_matting_foreground_threshold,
+        alpha_matting_background_threshold=alpha_matting_background_threshold,
+        alpha_matting_erode_size=alpha_matting_erode_size,
+        luma_threshold_low=luma_low,
+        luma_threshold_high=luma_high,
+        luma_unpremultiply=luma_unpremultiply,
+        luma_denoise=luma_denoise,
+        luma_gamma=luma_gamma,
+        saturation=saturation,
+        contrast=contrast,
+        brightness=brightness,
+        edge_smooth=edge_smooth,
+    )
+    vec_opts = VectorOptions(
+        color_mode=color_mode,
+        hierarchical=hierarchical,
+        mode=path_mode,
+        filter_speckle=filter_speckle,
+        color_precision=color_precision,
+        layer_difference=layer_difference,
+        corner_threshold=corner_threshold,
+        length_threshold=length_threshold,
+        max_iterations=max_iterations,
+        splice_threshold=splice_threshold,
+        path_precision=path_precision,
+        upscale=upscale,
+    )
+
+    files: list[BatchPipelineFile] = []
+    total_t0 = time.perf_counter()
+    svg_bg = _hex_to_rgb(flatten_color)
+
+    for src in inputs:
+        start = time.perf_counter()
+        try:
+            if no_bg_removal:
+                svg_path = out / f"{src.stem}.svg"
+                with Image.open(src) as img:
+                    png_to_svg(img, output_path=svg_path, options=vec_opts, background_color=svg_bg)
+                files.append(
+                    BatchPipelineFile(
+                        input_path=str(src),
+                        success=True,
+                        outputs=[str(svg_path)],
+                        method_used="no_bg_removal",
+                        duration_ms=int((time.perf_counter() - start) * 1000),
+                    )
+                )
+                continue
+
+            result = process_image(
+                src,
+                output_dir=out,
+                bg_options=bg_opts,
+                vec_options=vec_opts,
+                make_svg=not no_svg,
+                base_name=src.stem,
+                svg_background=svg_bg,
+            )
+            outputs = [
+                str(path)
+                for path in (result.cleaned_path, result.svg_path, result.svg_clean_path)
+                if path is not None
+            ]
+            files.append(
+                BatchPipelineFile(
+                    input_path=str(src),
+                    success=True,
+                    outputs=outputs,
+                    method_used=result.method_used,
+                    duration_ms=int((time.perf_counter() - start) * 1000),
+                )
+            )
+        except Exception as exc:
+            files.append(
+                BatchPipelineFile(
+                    input_path=str(src),
+                    success=False,
+                    duration_ms=int((time.perf_counter() - start) * 1000),
+                    error=str(exc),
+                )
+            )
+
+    failures = [item for item in files if not item.success]
+    success_count = len(files) - len(failures)
+    total_ms = int((time.perf_counter() - total_t0) * 1000)
+    lines = [
+        f"Processed {success_count}/{len(files)} image(s) in {total_ms / 1000:.2f}s",
+        f"Output: {out}",
+    ]
+    if failures:
+        lines.append("")
+        lines.append("Failures:")
+        lines.extend(f"- {Path(item.input_path).name}: {item.error}" for item in failures)
+
+    return BatchPipelineResponse(
+        success=not failures,
+        summary="\n".join(lines),
+        total=len(files),
+        success_count=success_count,
+        failure_count=len(failures),
+        output_dir=str(out),
+        files=files,
+    )
+
+
+@app.post("/api/ktx/orientation", response_model=KtxPatchResponse)
+async def ktx_orientation(
+    file: UploadFile = File(...),
+    output_name: str = Form(""),
+    output_path: str = Form(""),
+) -> KtxPatchResponse:
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    stem = Path(output_name or file.filename or "texture").stem or "texture"
+    filename = _safe_download_name(stem, "texture", ".ktx")
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            input_ktx = tmp / "input.ktx"
+            input_ktx.write_bytes(raw)
+            patch_orientation(input_ktx)
+            patched = input_ktx.read_bytes()
+    except Exception as exc:
+        return KtxPatchResponse(success=False, summary=f"KTX orientation patch failed: {exc}")
+
+    saved_path = None
+    if output_path.strip():
+        out_dir = Path(output_path).expanduser().resolve()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        saved = out_dir / filename
+        saved.write_bytes(patched)
+        saved_path = str(saved)
+
+    return KtxPatchResponse(
+        success=True,
+        summary="KTXorientation=rd is present.",
+        filename=filename,
+        ktx_b64=base64.b64encode(patched).decode("ascii"),
+        saved_path=saved_path,
+        size_input=len(raw),
+        size_output=len(patched),
+    )
+
+
+@app.post("/api/ktx/portfolio", response_model=PortfolioKtxResponse)
+async def portfolio_ktx(
+    file: UploadFile = File(...),
+    output_name: str = Form(""),
+    output_path: str = Form(""),
+) -> PortfolioKtxResponse:
+    if not _has_python_module("alktx2"):
+        return PortfolioKtxResponse(
+            success=False,
+            summary=(
+                "alktx2 is not installed in this venv. "
+                "Install with: python -m pip install alktx2"
+            ),
+        )
+
+    raw, image = await _read_upload_image(file)
+    stem = Path(output_name or file.filename or "portfolio-texture").stem or "portfolio-texture"
+    filename = _safe_download_name(stem, "portfolio-texture", ".ktx")
+    start = time.perf_counter()
+
+    try:
+        from alktx2 import encode_image_to_ktx2
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            aligned_png = tmp / "aligned.png"
+            output_ktx = tmp / filename
+            source_size, fitted_size = _fit_to_portfolio_canvas(image, aligned_png)
+
+            encode_image_to_ktx2(
+                str(aligned_png),
+                str(output_ktx),
+                codec="etc1s",
+                quality=255,
+                srgb=True,
+                mipmaps=False,
+                threads=0,
+                verbose=False,
+            )
+            patch_orientation(output_ktx)
+            ktx_bytes = output_ktx.read_bytes()
+    except Exception as exc:
+        return PortfolioKtxResponse(success=False, summary=f"Portfolio KTX conversion failed: {exc}")
+
+    saved_path = None
+    if output_path.strip():
+        out_dir = Path(output_path).expanduser().resolve()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        saved = out_dir / filename
+        saved.write_bytes(ktx_bytes)
+        saved_path = str(saved)
+
+    duration_ms = int((time.perf_counter() - start) * 1000)
+    summary = "\n".join(
+        [
+            f"Fit {source_size[0]}x{source_size[1]} -> {fitted_size[0]}x{fitted_size[1]}",
+            f"Canvas {PORTFOLIO_KTX_WIDTH}x{PORTFOLIO_KTX_HEIGHT}, ETC1S q255, sRGB, no mipmaps",
+            f"PNG {len(raw) / 1024:.0f} KB -> KTX {len(ktx_bytes) / 1024:.0f} KB",
+        ]
+    )
+    if saved_path:
+        summary += f"\nSaved: {saved_path}"
+
+    return PortfolioKtxResponse(
+        success=True,
+        summary=summary,
+        filename=filename,
+        ktx_b64=base64.b64encode(ktx_bytes).decode("ascii"),
+        saved_path=saved_path,
+        duration_ms=duration_ms,
+        size_input=len(raw),
+        size_output=len(ktx_bytes),
     )
 
 

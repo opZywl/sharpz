@@ -12,7 +12,7 @@ export function ThemeToggle() {
             size="icon"
             onClick={toggleTheme}
             aria-label="Toggle theme"
-            className="rounded-full"
+            className="theme-icon-button rounded-full"
         >
             {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </Button>

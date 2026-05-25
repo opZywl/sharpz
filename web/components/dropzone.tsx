@@ -41,12 +41,10 @@ export function Dropzone({ file, previewUrl, onChange }: DropzoneProps) {
             }}
             onClick={() => inputRef.current?.click()}
             className={cn(
-                "group relative flex aspect-square w-full cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed border-dark-4/80 bg-neutral-800/20 transition-all",
-                isDragging
-                    ? "border-zinc-200/60 bg-white/[0.07]"
-                    : "hover:border-zinc-200/35 hover:bg-white/[0.04]",
+                "dropzone-shell group relative flex aspect-square w-full cursor-pointer items-center justify-center overflow-hidden rounded-xl transition-all",
                 previewUrl && "checker border-solid",
             )}
+            data-dragging={isDragging}
         >
             <input
                 ref={inputRef}
@@ -87,14 +85,14 @@ export function Dropzone({ file, previewUrl, onChange }: DropzoneProps) {
                 </>
             ) : (
                 <div className="flex flex-col items-center gap-3 p-8 text-center">
-                    <div className="rounded-full border border-dark-4 bg-neutral-800/35 p-3 transition-transform group-hover:scale-105">
-                        <ImagePlus className="size-6 text-zinc-400" />
+                    <div className="dropzone-icon rounded-full p-3 transition-transform group-hover:scale-105">
+                        <ImagePlus className="size-6" />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-zinc-100">Solte uma imagem aqui</p>
-                        <p className="mt-1 text-xs text-zinc-500">ou clique para escolher - PNG, JPG, WebP</p>
+                        <p className="text-sm font-medium">Solte uma imagem aqui</p>
+                        <p className="app-faint mt-1 text-xs">ou clique para escolher - PNG, JPG, WebP</p>
                     </div>
-                    <Button variant="outline" size="sm" type="button" className="pointer-events-none border-dark-4 bg-transparent text-zinc-100">
+                    <Button variant="outline" size="sm" type="button" className="pointer-events-none">
                         <Upload className="size-3.5" />
                         Escolher arquivo
                     </Button>
