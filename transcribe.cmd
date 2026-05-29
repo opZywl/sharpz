@@ -11,7 +11,6 @@ set "WVENV=%ROOT%\whisper-venv"
 set "WPY=%WVENV%\Scripts\python.exe"
 set "BVENV=%ROOT%\venv"
 set "BPY=%BVENV%\Scripts\python.exe"
-set "WHISPERX_SRC=C:\Users\zywl\Downloads\whisperX-main"
 set "API_URL=http://127.0.0.1:8000/api/health"
 set "WEB_URL=http://localhost:5174"
 
@@ -86,18 +85,13 @@ if errorlevel 1 (
   goto :fail
 )
 
-if exist "%WHISPERX_SRC%" (
-  echo %C_CYAN%  Instalando whisperX a partir de %WHISPERX_SRC%...%C_RESET%
-  uv pip install -p "%WPY%" "%WHISPERX_SRC%"
-  if errorlevel 1 (
-    echo %C_YEL%  [!] Falha ao instalar whisperX. Alinhamento/diarizacao ficarao indisponiveis;%C_RESET%
-    echo %C_YEL%      a transcricao basica (faster-whisper) continua funcionando.%C_RESET%
-  ) else (
-    echo %C_GREEN%  [ok] whisperX instalado%C_RESET%
-  )
+echo %C_CYAN%  Instalando whisperX + pyannote (PyPI, opcional)...%C_RESET%
+uv pip install -p "%WPY%" whisperx imageio-ffmpeg
+if errorlevel 1 (
+  echo %C_YEL%  [!] Falha ao instalar whisperX. Alinhamento/diarizacao ficarao indisponiveis;%C_RESET%
+  echo %C_YEL%      a transcricao basica (faster-whisper) continua funcionando.%C_RESET%
 ) else (
-  echo %C_YEL%  [!] Fonte do whisperX nao encontrada em %WHISPERX_SRC%.%C_RESET%
-  echo %C_YEL%      Seguindo apenas com faster-whisper (sem alinhamento/diarizacao).%C_RESET%
+  echo %C_GREEN%  [ok] whisperX instalado%C_RESET%
 )
 echo.
 
