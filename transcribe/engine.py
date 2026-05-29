@@ -209,7 +209,10 @@ def run_whisperx(args, degraded: list[str]):
                     from whisperx.diarize import DiarizationPipeline
                 except Exception:
                     DiarizationPipeline = whisperx.DiarizationPipeline
-                dia = DiarizationPipeline(use_auth_token=hf_token, device="cpu")
+                try:
+                    dia = DiarizationPipeline(token=hf_token, device="cpu")
+                except TypeError:
+                    dia = DiarizationPipeline(use_auth_token=hf_token, device="cpu")
                 diar = dia(
                     audio,
                     min_speakers=args.min_speakers or None,
