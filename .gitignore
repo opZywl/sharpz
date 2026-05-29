@@ -1,6 +1,7 @@
 # Python
 venv/
 .venv/
+whisper-venv/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -26,6 +27,7 @@ ktx-presets-test.json
 
 # Generated outputs
 output/
+output/transcripts/
 output_ktx/
 .ktx_work/
 

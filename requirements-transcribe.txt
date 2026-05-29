@@ -1,0 +1,17 @@
+# Dependencias do motor de transcricao (whisper-venv, Python 3.12)
+# Instalado de forma isolada do backend principal (requirements.txt).
+# O launcher transcribe.cmd cuida da instalacao na ordem correta.
+#
+# IMPORTANTE: torch/torchaudio vem do indice CPU oficial do PyTorch:
+#   --index-url https://download.pytorch.org/whl/cpu
+# Exemplo manual:
+#   uv pip install -p whisper-venv\Scripts\python.exe torch==2.8.0 torchaudio==2.8.0 \
+#       --index-url https://download.pytorch.org/whl/cpu
+
+faster-whisper
+ctranslate2
+torch==2.8.0
+torchaudio==2.8.0
+whisperx
+pyannote.audio
+imageio-ffmpeg

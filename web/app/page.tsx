@@ -5,6 +5,7 @@ import {
     Activity,
     AlertTriangle,
     Archive,
+    AudioLines,
     Box,
     Check,
     CheckCircle2,
@@ -35,6 +36,7 @@ import { useEffect, useMemo, useState } from "react"
 
 import { Dropzone } from "@/components/dropzone"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { TranscribeWorkspace } from "@/components/transcribe/transcribe-workspace"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { cn } from "@/lib/utils"
@@ -48,6 +50,7 @@ type Workspace =
     | "ktx-batch"
     | "ktx-orientation"
     | "portfolio-ktx"
+    | "transcribe"
     | "system"
 type Method = "auto" | "ai" | "luma_dark" | "luma_light" | "none"
 type ColorMode = "color" | "binary"
@@ -243,6 +246,14 @@ const workspaces: Array<{
         description: "Converte imagens para o formato fixo usado no portfolio 3D, com canvas 960x540 e orientation patch.",
         icon: PackageCheck,
         accent: "text-cyan-600 dark:text-cyan-200",
+    },
+    {
+        id: "transcribe",
+        title: "Transcricao",
+        label: "Video -> Texto",
+        description: "Transcreve video ou audio com Whisper, com diarizacao, timestamps por palavra e exportacao em varios formatos.",
+        icon: AudioLines,
+        accent: "text-rose-600 dark:text-rose-200",
     },
     {
         id: "system",
@@ -1417,6 +1428,8 @@ export default function Page() {
                                 </Panel>
                             ) : null}
                         </motion.div>
+                    ) : active === "transcribe" ? (
+                        <TranscribeWorkspace />
                     ) : active === "ktx-orientation" ? (
                         <motion.div {...cardEnter} className="grid gap-4 xl:grid-cols-[minmax(290px,0.72fr)_minmax(0,1.28fr)]">
                             <Panel title="Arquivo KTX" subtitle="Aceita .ktx ou .ktx2 e devolve o arquivo patchado." icon={Archive}>
@@ -1539,6 +1552,7 @@ export default function Page() {
                         </motion.div>
                     )}
 
+                    {active === "transcribe" ? null : (
                     <motion.div {...cardEnter}>
                         <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de pagina." icon={Activity}>
                             {active === "pipeline" ? (
@@ -1738,6 +1752,7 @@ export default function Page() {
                             ) : null}
                         </Panel>
                     </motion.div>
+                    )}
 
                     <footer className="app-faint flex flex-wrap items-center justify-between gap-3 pb-4 text-xs">
                         <span>rembg - vtracer - resvg - FastAPI - Next.js</span>

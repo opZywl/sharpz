@@ -17,8 +17,10 @@ from __future__ import annotations
 import base64
 import io
 import importlib.util
+import shutil
 import tempfile
 import time
+import uuid
 from dataclasses import replace as dc_replace
 from pathlib import Path
 from typing import Literal
@@ -26,6 +28,7 @@ from typing import Literal
 import resvg_py
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
 from PIL import Image
 from pydantic import BaseModel
 
@@ -51,6 +54,16 @@ from src.ktx import (
     summarize as ktx_summarize,
 )
 from add_ktx_orientation import patch_orientation
+from transcribe.jobs import (
+    DEFAULT_MODEL as TRANSCRIBE_DEFAULT_MODEL,
+    STORE as TRANSCRIBE_STORE,
+    UPLOAD_DIR as TRANSCRIBE_UPLOAD_DIR,
+    VALID_FORMATS as TRANSCRIBE_VALID_FORMATS,
+    VALID_MODELS as TRANSCRIBE_VALID_MODELS,
+    model_catalog as transcribe_model_catalog,
+    venv_available as transcribe_venv_available,
+    whisperx_available as transcribe_whisperx_available,
+)
 
 
 app = FastAPI(title="Cleanup Image API", version="1.0.0")
@@ -274,6 +287,29 @@ class PortfolioKtxResponse(BaseModel):
     size_output: int = 0
     target_width: int = PORTFOLIO_KTX_WIDTH
     target_height: int = PORTFOLIO_KTX_HEIGHT
+
+
+class TranscribeJobCreated(BaseModel):
+    job_id: str
+
+
+class TranscribeModelInfo(BaseModel):
+    key: str
+    label: str
+    downloaded: bool
+    is_default: bool
+
+
+class TranscribeModelsResponse(BaseModel):
+    models: list[TranscribeModelInfo]
+
+
+class TranscribeCapabilitiesResponse(BaseModel):
+    ffmpeg: bool
+    whisperx: bool
+    diarization: bool
+    venv: bool
+    default_model: str
 
 
 # ────────── Endpoints ──────────
@@ -906,6 +942,118 @@ async def portfolio_ktx(
         size_input=len(raw),
         size_output=len(ktx_bytes),
     )
+
+
+# ────────── Transcribe ──────────
+
+
+def _parse_formats(formats: str) -> list[str]:
+    requested = [item.strip().lower() for item in formats.split(",") if item.strip()]
+    valid = [item for item in requested if item in TRANSCRIBE_VALID_FORMATS]
+    return valid or ["txt", "srt", "vtt", "json"]
+
+
+@app.post("/api/transcribe", response_model=TranscribeJobCreated)
+async def transcribe_create(
+    file: UploadFile | None = File(None),
+    local_path: str = Form(""),
+    model: str = Form(TRANSCRIBE_DEFAULT_MODEL),
+    language: str = Form("auto"),
+    formats: str = Form("txt,srt,vtt,json,lrc"),
+    vad: bool = Form(False),
+    word_timestamps: bool = Form(False),
+    diarize: bool = Form(False),
+    translate: bool = Form(False),
+    hf_token: str = Form(""),
+    min_speakers: int | None = Form(None),
+    max_speakers: int | None = Form(None),
+    threads: int | None = Form(None),
+) -> TranscribeJobCreated:
+    selected_model = model if model in TRANSCRIBE_VALID_MODELS else TRANSCRIBE_DEFAULT_MODEL
+
+    input_path: str | None = None
+    if file is not None and file.filename:
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail="Arquivo enviado esta vazio.")
+        TRANSCRIBE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        safe_name = Path(file.filename).name or "upload"
+        target = TRANSCRIBE_UPLOAD_DIR / f"{uuid.uuid4().hex}_{safe_name}"
+        target.write_bytes(raw)
+        input_path = str(target)
+    elif local_path.strip():
+        candidate = Path(local_path.strip()).expanduser()
+        if not candidate.exists():
+            raise HTTPException(status_code=400, detail=f"Caminho local nao encontrado: {candidate}")
+        input_path = str(candidate)
+    else:
+        raise HTTPException(status_code=400, detail="Envie um arquivo ou informe local_path.")
+
+    options = {
+        "input_path": input_path,
+        "model": selected_model,
+        "language": language or "auto",
+        "formats": _parse_formats(formats),
+        "vad": vad,
+        "word_timestamps": word_timestamps,
+        "diarize": diarize,
+        "translate": translate,
+        "hf_token": hf_token.strip() or None,
+        "min_speakers": min_speakers,
+        "max_speakers": max_speakers,
+        "threads": threads,
+    }
+    job_id = TRANSCRIBE_STORE.enqueue(options)
+    return TranscribeJobCreated(job_id=job_id)
+
+
+@app.get("/api/transcribe/models", response_model=TranscribeModelsResponse)
+async def transcribe_models() -> TranscribeModelsResponse:
+    return TranscribeModelsResponse(
+        models=[TranscribeModelInfo(**entry) for entry in transcribe_model_catalog()]
+    )
+
+
+@app.get("/api/transcribe/capabilities", response_model=TranscribeCapabilitiesResponse)
+async def transcribe_capabilities() -> TranscribeCapabilitiesResponse:
+    whisperx = transcribe_whisperx_available()
+    return TranscribeCapabilitiesResponse(
+        ffmpeg=shutil.which("ffmpeg") is not None,
+        whisperx=whisperx,
+        diarization=whisperx,
+        venv=transcribe_venv_available(),
+        default_model=TRANSCRIBE_DEFAULT_MODEL,
+    )
+
+
+@app.get("/api/transcribe/jobs/{job_id}")
+async def transcribe_job(job_id: str) -> dict:
+    state = TRANSCRIBE_STORE.get(job_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    return state
+
+
+@app.get("/api/transcribe/jobs/{job_id}/stream")
+async def transcribe_job_stream(job_id: str) -> StreamingResponse:
+    if TRANSCRIBE_STORE.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    return StreamingResponse(
+        TRANSCRIBE_STORE.stream(job_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/transcribe/jobs/{job_id}/download")
+async def transcribe_job_download(job_id: str, format: str) -> FileResponse:
+    if TRANSCRIBE_STORE.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    fmt = format.strip().lower()
+    path = TRANSCRIBE_STORE.get_file(job_id, fmt)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"Arquivo '{fmt}' indisponivel para este job.")
+    return FileResponse(str(path), filename=path.name, media_type="application/octet-stream")
 
 
 if __name__ == "__main__":

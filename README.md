@@ -65,6 +65,37 @@ The web dashboard talks to FastAPI at:
 http://127.0.0.1:8000
 ```
 
+## Transcricao de Video
+
+A aba **Transcricao** do dashboard converte audio de videos em texto usando
+faster-whisper (modelo `large-v3` por padrao), com alinhamento de palavras e
+diarizacao de falantes via whisperX quando disponivel. Os formatos de saida
+sao `txt`, `srt`, `vtt`, `json` e `lrc`.
+
+O motor roda em um venv isolado (`whisper-venv`, Python 3.12) e e exposto pelo
+backend em `/api/transcribe/*`. O frontend consome via proxy relativo `/api`.
+
+Forma mais simples de subir tudo (Windows): rode o launcher na raiz do repo.
+
+```powershell
+.\transcribe.cmd
+```
+
+O `transcribe.cmd` faz tudo de ponta a ponta, sem fricao:
+
+1. Verifica `node`, `uv` e `ffmpeg` (instrui o `winget install` se faltar).
+2. Cria/garante o `whisper-venv` e instala o motor (faster-whisper, torch/torchaudio
+   do indice CPU `https://download.pytorch.org/whl/cpu`, whisperX).
+3. Garante o venv do backend, sobe o `server.py` na porta 8000 e aguarda o
+   healthcheck em `http://127.0.0.1:8000/api/health`.
+4. Sobe o frontend (`npm run dev`) na porta 5174 e aguarda responder.
+5. Valida 200 nos dois servicos e abre o dashboard no Chrome.
+
+Na primeira transcricao o modelo `large-v3` e baixado automaticamente.
+
+As dependencias do motor estao em `requirements-transcribe.txt` para
+reprodutibilidade.
+
 ## Workspaces
 
 | Workspace | Purpose |
@@ -77,6 +108,7 @@ http://127.0.0.1:8000
 | Batch KTX | Local folder batch conversion with recursive and flattened output modes. |
 | Patch KTX | Add `KTXorientation=rd` to uploaded KTX/KTX2 files. |
 | Portfolio KTX | Fit images into the portfolio 960x540 canvas and encode via `alktx2`. |
+| Transcricao | Transcribe video audio to text with faster-whisper and whisperX (txt/srt/vtt/json/lrc). |
 | Sistema | Inspect API capabilities, endpoints, models, and encoder status. |
 
 ## API
