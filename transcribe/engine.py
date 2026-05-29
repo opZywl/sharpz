@@ -196,7 +196,8 @@ def run_whisperx(args, degraded: list[str]):
 
     if args.diarize:
         emit({"type": "stage", "stage": "diarize", "status": "start", "detail": ""})
-        if not args.hf_token:
+        hf_token = args.hf_token or os.environ.get("HF_TOKEN")
+        if not hf_token:
             degraded.append("diarize")
             emit({
                 "type": "stage", "stage": "diarize", "status": "skipped",
@@ -208,7 +209,7 @@ def run_whisperx(args, degraded: list[str]):
                     from whisperx.diarize import DiarizationPipeline
                 except Exception:
                     DiarizationPipeline = whisperx.DiarizationPipeline
-                dia = DiarizationPipeline(use_auth_token=args.hf_token, device="cpu")
+                dia = DiarizationPipeline(use_auth_token=hf_token, device="cpu")
                 diar = dia(
                     audio,
                     min_speakers=args.min_speakers or None,

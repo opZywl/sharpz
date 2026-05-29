@@ -11,6 +11,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VENV_PYTHON = REPO_ROOT / "whisper-venv" / "Scripts" / "python.exe"
+BACKEND_PYTHON = REPO_ROOT / "venv" / "Scripts" / "python.exe"
 OUTPUT_ROOT = REPO_ROOT / "output" / "transcripts"
 UPLOAD_DIR = OUTPUT_ROOT / "_uploads"
 
@@ -29,6 +30,22 @@ DEFAULT_MODEL = "large-v3"
 VALID_FORMATS = ["txt", "srt", "vtt", "json", "lrc"]
 
 _SENTINEL = object()
+
+
+def _load_hf_token() -> str | None:
+    token = os.environ.get("HF_TOKEN")
+    if token:
+        return token.strip()
+    env_path = REPO_ROOT / ".env"
+    if env_path.exists():
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if stripped.startswith("HF_TOKEN=") and not stripped.startswith("#"):
+                    return stripped.split("=", 1)[1].strip().strip('"').strip("'")
+        except Exception:
+            pass
+    return None
 
 
 class JobStore:
@@ -54,6 +71,7 @@ class JobStore:
             "error": None,
             "elapsed": None,
             "options": options,
+            "input_path": options.get("input_path"),
             "events": queue.Queue(),
         }
         with self._lock:
@@ -78,6 +96,24 @@ class JobStore:
             return None
         path = OUTPUT_ROOT / job_id / filename
         return path if path.exists() else None
+
+    def get_input_path(self, job_id: str) -> Path | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            input_path = job.get("input_path")
+        if not input_path:
+            return None
+        path = Path(input_path)
+        return path if path.exists() else None
+
+    def get_segments(self, job_id: str) -> list[dict] | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            return list(job["segments"])
 
     def stream(self, job_id: str):
         with self._lock:
@@ -137,6 +173,26 @@ class JobStore:
         out_dir = OUTPUT_ROOT / job_id
         out_dir.mkdir(parents=True, exist_ok=True)
 
+        if not options.get("input_path") and options.get("url"):
+            try:
+                resolved = self._download_url(job_id, options["url"], out_dir)
+            except Exception as exc:
+                self._set(job_id, status="error", stage="error", error=str(exc))
+                self._push(job_id, {"type": "error", "message": str(exc)})
+                return
+            options["input_path"] = str(resolved)
+            self._set(job_id, input_path=str(resolved))
+            with self._lock:
+                job = self._jobs.get(job_id)
+                if job is not None:
+                    job["options"]["input_path"] = str(resolved)
+
+        if not options.get("input_path"):
+            message = "Nenhuma fonte de audio disponivel para este job."
+            self._set(job_id, status="error", stage="error", error=message)
+            self._push(job_id, {"type": "error", "message": message})
+            return
+
         argv = _build_argv(options, out_dir, job_id)
         env = dict(os.environ)
         env["PYTHONUTF8"] = "1"
@@ -188,6 +244,53 @@ class JobStore:
             message = (stderr or "").strip() or f"motor finalizou com codigo {proc.returncode}"
             self._set(job_id, status="error", stage="error", error=message, elapsed=elapsed)
             self._push(job_id, {"type": "error", "message": message})
+
+    def _download_url(self, job_id: str, url: str, out_dir: Path) -> Path:
+        self._set(job_id, status="running", stage="download")
+        self._push(job_id, {"type": "stage", "stage": "download", "status": "start"})
+
+        argv = [
+            str(BACKEND_PYTHON),
+            "-m",
+            "yt_dlp",
+            "-f",
+            "bestaudio",
+            "-x",
+            "--audio-format",
+            "mp3",
+            "-o",
+            str(out_dir / "source.%(ext)s"),
+            "--no-playlist",
+            url,
+        ]
+        env = dict(os.environ)
+        env["PYTHONUTF8"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
+
+        proc = subprocess.run(
+            argv,
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+        )
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "").strip()
+            raise RuntimeError(
+                f"Falha ao baixar o audio da URL. Verifique se o link e valido e acessivel.\n{detail}".strip()
+            )
+
+        source = out_dir / "source.mp3"
+        if not source.exists():
+            matches = sorted(out_dir.glob("source.*"))
+            if not matches:
+                raise RuntimeError("Download concluido mas o arquivo de audio nao foi encontrado.")
+            source = matches[0]
+
+        self._push(job_id, {"type": "stage", "stage": "download", "status": "done"})
+        return source
 
     def _apply_event(self, job_id: str, event: dict) -> None:
         kind = event.get("type")
@@ -263,6 +366,7 @@ def _public_view(job: dict) -> dict:
         "error": job["error"],
         "elapsed": job["elapsed"],
         "options": dict(job["options"]),
+        "input_path": job.get("input_path"),
     }
 
 
@@ -306,8 +410,9 @@ def _build_argv(options: dict, out_dir: Path, job_id: str) -> list[str]:
         argv.append("--diarize")
     if options.get("translate"):
         argv.append("--translate")
-    if options.get("hf_token"):
-        argv.extend(["--hf-token", str(options["hf_token"])])
+    token = options.get("hf_token") or _load_hf_token()
+    if token:
+        argv.extend(["--hf-token", str(token)])
     if options.get("min_speakers") is not None:
         argv.extend(["--min-speakers", str(options["min_speakers"])])
     if options.get("max_speakers") is not None:

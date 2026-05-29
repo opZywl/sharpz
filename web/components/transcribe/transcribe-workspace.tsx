@@ -10,20 +10,25 @@ import {
     ClipboardCheck,
     Download,
     Loader2,
+    Mic,
     Play,
     Settings2,
+    Sparkles,
+    Square,
     Users,
 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
+    audioUrl,
     downloadUrl,
     getCapabilities,
     getModels,
     openStream,
     startTranscription,
+    summarize,
     type TranscribeCapabilities,
     type TranscribeEvent,
     type TranscribeModel,
@@ -50,6 +55,11 @@ const cardEnter = {
 
 const DEFAULT_MODEL = "large-v3"
 const HF_TOKEN_KEY = "cleanup-image.hf-token"
+const LLM_BASE_URL_KEY = "cleanup-image.llm-base-url"
+const LLM_MODEL_KEY = "cleanup-image.llm-model"
+const LLM_API_KEY_KEY = "cleanup-image.llm-api-key"
+const DEFAULT_LLM_BASE_URL = "http://localhost:11434/v1"
+const DEFAULT_LLM_MODEL = "llama3.1"
 
 const MEDIA_ACCEPT = ".mp4,.mkv,.mov,.webm,.mp3,.wav,.m4a,video/*,audio/*"
 
@@ -339,6 +349,10 @@ export function TranscribeWorkspace() {
 
     const [file, setFile] = useState<File | null>(null)
     const [localPath, setLocalPath] = useState("")
+    const [url, setUrl] = useState("")
+
+    const [recording, setRecording] = useState(false)
+    const [recordSeconds, setRecordSeconds] = useState(0)
 
     const [model, setModel] = useState(DEFAULT_MODEL)
     const [language, setLanguage] = useState("auto")
@@ -370,8 +384,27 @@ export function TranscribeWorkspace() {
     const [copied, setCopied] = useState(false)
     const [jobId, setJobId] = useState<string | null>(null)
 
+    const [llmBaseUrl, setLlmBaseUrl] = useState(DEFAULT_LLM_BASE_URL)
+    const [llmModel, setLlmModel] = useState(DEFAULT_LLM_MODEL)
+    const [llmApiKey, setLlmApiKey] = useState("")
+    const [summaryText, setSummaryText] = useState("")
+    const [summarizing, setSummarizing] = useState(false)
+    const [summaryError, setSummaryError] = useState<string | null>(null)
+
+    const [activeSegment, setActiveSegment] = useState<number | null>(null)
+    const [waveReady, setWaveReady] = useState(false)
+    const [waveFailed, setWaveFailed] = useState(false)
+
     const sourceRef = useRef<EventSource | null>(null)
     const segmentsEndRef = useRef<HTMLDivElement | null>(null)
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+    const recordChunksRef = useRef<BlobPart[]>([])
+    const recordTimerRef = useRef<number | null>(null)
+    const recordStreamRef = useRef<MediaStream | null>(null)
+    const waveContainerRef = useRef<HTMLDivElement | null>(null)
+    const waveSurferRef = useRef<{ seekTo: (n: number) => void; play: () => void; getDuration: () => number; destroy: () => void } | null>(null)
+    const waveDurationRef = useRef<number>(0)
+    const segmentsRef = useRef<TranscribeSegment[]>([])
 
     useEffect(() => {
         let cancelled = false
@@ -417,14 +450,48 @@ export function TranscribeWorkspace() {
     }, [hfToken])
 
     useEffect(() => {
+        try {
+            const savedBase = window.localStorage.getItem(LLM_BASE_URL_KEY)
+            const savedModel = window.localStorage.getItem(LLM_MODEL_KEY)
+            const savedKey = window.localStorage.getItem(LLM_API_KEY_KEY)
+            if (savedBase) setLlmBaseUrl(savedBase)
+            if (savedModel) setLlmModel(savedModel)
+            if (savedKey) setLlmApiKey(savedKey)
+        } catch {
+            // ignora indisponibilidade de localStorage
+        }
+    }, [])
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(LLM_BASE_URL_KEY, llmBaseUrl)
+            window.localStorage.setItem(LLM_MODEL_KEY, llmModel)
+            window.localStorage.setItem(LLM_API_KEY_KEY, llmApiKey)
+        } catch {
+            // ignora indisponibilidade de localStorage
+        }
+    }, [llmBaseUrl, llmModel, llmApiKey])
+
+    useEffect(() => {
         return () => {
             sourceRef.current?.close()
+            if (recordTimerRef.current) window.clearInterval(recordTimerRef.current)
+            recordStreamRef.current?.getTracks().forEach((track) => track.stop())
+            try {
+                waveSurferRef.current?.destroy()
+            } catch {
+                // ignora falha ao destruir wavesurfer
+            }
         }
     }, [])
 
     useEffect(() => {
         segmentsEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
     }, [segments.length])
+
+    useEffect(() => {
+        segmentsRef.current = segments
+    }, [segments])
 
     const modelOptions: ModelOption[] = useMemo(() => {
         const downloadedByKey = new Map(models.map((entry) => [entry.key, entry.downloaded]))
@@ -456,6 +523,17 @@ export function TranscribeWorkspace() {
         setResultFiles({})
         setError(null)
         setCopied(false)
+        setSummaryText("")
+        setSummaryError(null)
+        setActiveSegment(null)
+        setWaveReady(false)
+        setWaveFailed(false)
+        try {
+            waveSurferRef.current?.destroy()
+        } catch {
+            // ignora falha ao destruir wavesurfer
+        }
+        waveSurferRef.current = null
     }
 
     function handleEvent(event: TranscribeEvent) {
@@ -506,8 +584,9 @@ export function TranscribeWorkspace() {
     }
 
     async function handleTranscribe() {
-        if (!file && !localPath.trim()) {
-            setError("Carregue um arquivo de video/audio ou informe um caminho local.")
+        const hasUrl = Boolean(url.trim())
+        if (!file && !localPath.trim() && !hasUrl) {
+            setError("Carregue um arquivo, informe um caminho local ou uma URL (YouTube/web).")
             return
         }
         if (!selectedFormats.length) {
@@ -521,8 +600,12 @@ export function TranscribeWorkspace() {
 
         try {
             const form = new FormData()
-            if (file) form.append("file", file)
-            if (localPath.trim()) form.append("local_path", localPath.trim())
+            if (hasUrl) {
+                form.append("url", url.trim())
+            } else {
+                if (file) form.append("file", file)
+                if (localPath.trim()) form.append("local_path", localPath.trim())
+            }
             form.append("model", model)
             form.append("language", language)
             form.append("formats", selectedFormats.join(","))
@@ -554,6 +637,152 @@ export function TranscribeWorkspace() {
         }
     }
 
+    async function startRecording() {
+        setError(null)
+        if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+            setError("Gravacao por microfone nao e suportada neste navegador.")
+            return
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+            recordStreamRef.current = stream
+            recordChunksRef.current = []
+            const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" })
+            recorder.ondataavailable = (event) => {
+                if (event.data.size > 0) recordChunksRef.current.push(event.data)
+            }
+            recorder.onstop = () => {
+                const blob = new Blob(recordChunksRef.current, { type: "audio/webm" })
+                const recorded = new File([blob], "gravacao.webm", { type: "audio/webm" })
+                setFile(recorded)
+                setLocalPath("")
+                setUrl("")
+                recordStreamRef.current?.getTracks().forEach((track) => track.stop())
+                recordStreamRef.current = null
+            }
+            mediaRecorderRef.current = recorder
+            recorder.start()
+            setRecording(true)
+            setRecordSeconds(0)
+            recordTimerRef.current = window.setInterval(() => {
+                setRecordSeconds((value) => value + 1)
+            }, 1000)
+        } catch (err) {
+            if (err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError")) {
+                setError("Permissao de microfone negada. Libere o acesso ao microfone para gravar.")
+            } else if (err instanceof DOMException && err.name === "NotFoundError") {
+                setError("Nenhum microfone foi encontrado.")
+            } else {
+                setError("Nao foi possivel iniciar a gravacao do microfone.")
+            }
+        }
+    }
+
+    function stopRecording() {
+        if (recordTimerRef.current) {
+            window.clearInterval(recordTimerRef.current)
+            recordTimerRef.current = null
+        }
+        try {
+            mediaRecorderRef.current?.stop()
+        } catch {
+            // ignora falha ao parar o recorder
+        }
+        mediaRecorderRef.current = null
+        setRecording(false)
+    }
+
+    async function handleSummarize() {
+        if (!jobId) return
+        setSummarizing(true)
+        setSummaryError(null)
+        setSummaryText("")
+        try {
+            const result = await summarize(jobId, {
+                base_url: llmBaseUrl.trim() || DEFAULT_LLM_BASE_URL,
+                model: llmModel.trim() || DEFAULT_LLM_MODEL,
+                api_key: llmApiKey.trim() || undefined,
+                language: detectedLanguage ?? (language === "auto" ? undefined : language),
+            })
+            setSummaryText(result.summary ?? "")
+        } catch (err) {
+            setSummaryError(err instanceof Error ? err.message : "Erro ao gerar o resumo.")
+        } finally {
+            setSummarizing(false)
+        }
+    }
+
+    const seekToSegment = useCallback(
+        (segment: TranscribeSegment, index: number) => {
+            setActiveSegment(index)
+            const surfer = waveSurferRef.current
+            if (!surfer) return
+            const total = waveDurationRef.current || surfer.getDuration() || 0
+            if (total > 0) {
+                surfer.seekTo(Math.min(1, Math.max(0, segment.start / total)))
+                surfer.play()
+            }
+        },
+        [],
+    )
+
+    useEffect(() => {
+        if (status !== "done" || !jobId || !waveContainerRef.current) return
+        let disposed = false
+        let instance: { destroy: () => void } | null = null
+
+        async function mount() {
+            try {
+                const mod = await import("wavesurfer.js")
+                if (disposed || !waveContainerRef.current) return
+                const WaveSurfer = mod.default
+                const ws = WaveSurfer.create({
+                    container: waveContainerRef.current,
+                    height: 72,
+                    waveColor: "rgba(120,120,120,0.45)",
+                    progressColor: "rgba(20,20,20,0.85)",
+                    cursorColor: "rgba(20,20,20,0.85)",
+                    barWidth: 2,
+                    barGap: 1,
+                    barRadius: 2,
+                    url: audioUrl(jobId as string),
+                })
+                instance = ws
+                waveSurferRef.current = ws as unknown as typeof waveSurferRef.current
+                ws.on("ready", () => {
+                    if (disposed) return
+                    waveDurationRef.current = ws.getDuration()
+                    setWaveReady(true)
+                })
+                ws.on("timeupdate", (current: number) => {
+                    if (disposed) return
+                    const idx = segmentsRef.current.findIndex(
+                        (segment) => current >= segment.start && current <= segment.end,
+                    )
+                    if (idx !== -1) setActiveSegment(idx)
+                })
+                ws.on("error", () => {
+                    if (!disposed) setWaveFailed(true)
+                })
+            } catch {
+                if (!disposed) setWaveFailed(true)
+            }
+        }
+
+        mount()
+        return () => {
+            disposed = true
+            try {
+                instance?.destroy()
+            } catch {
+                // ignora falha ao destruir wavesurfer
+            }
+            if (waveSurferRef.current === (instance as unknown as typeof waveSurferRef.current)) {
+                waveSurferRef.current = null
+            }
+        }
+    }, [status, jobId])
+
     const running = status === "running"
     const availableFiles = Object.keys(resultFiles)
 
@@ -583,6 +812,33 @@ export function TranscribeWorkspace() {
                             onChange={setLocalPath}
                             placeholder="C:/Users/zywl/Downloads/video.mp4"
                         />
+                        <div className="grid gap-2">
+                            <TextField
+                                label="URL (YouTube/web)"
+                                value={url}
+                                onChange={setUrl}
+                                placeholder="https://www.youtube.com/watch?v=..."
+                            />
+                            <span className="app-faint text-xs">
+                                Se preenchida, a URL tem prioridade sobre o arquivo. Requer yt-dlp no backend.
+                            </span>
+                        </div>
+                        <div className="grid gap-2">
+                            {recording ? (
+                                <Button type="button" variant="outline" className="w-full" onClick={stopRecording}>
+                                    <Square className="size-4" />
+                                    Parar ({formatTimecode(recordSeconds)})
+                                </Button>
+                            ) : (
+                                <Button type="button" variant="outline" className="w-full" onClick={startRecording}>
+                                    <Mic className="size-4" />
+                                    Gravar do microfone
+                                </Button>
+                            )}
+                            <span className="app-faint text-xs">
+                                A gravacao vira um arquivo gravacao.webm e segue o mesmo fluxo do upload.
+                            </span>
+                        </div>
                         {capabilities ? (
                             <div className="grid gap-2">
                                 <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
@@ -695,11 +951,37 @@ export function TranscribeWorkspace() {
                                 </div>
                             ) : null}
 
+                            {status === "done" && jobId ? (
+                                <div className="status-card rounded-xl p-3">
+                                    <div className="mb-2 flex items-center justify-between">
+                                        <span className="app-faint text-xs font-semibold uppercase tracking-[0.16em]">Forma de onda</span>
+                                        <span className="app-faint text-xs">
+                                            {waveFailed ? "indisponivel" : waveReady ? "clique num segmento p/ ir ate o trecho" : "carregando..."}
+                                        </span>
+                                    </div>
+                                    <div ref={waveContainerRef} className={cn("min-h-[72px] w-full", waveFailed && "hidden")} />
+                                    {waveFailed ? (
+                                        <p className="app-muted text-sm">
+                                            Nao foi possivel carregar a onda. Use a lista de segmentos abaixo.
+                                        </p>
+                                    ) : null}
+                                </div>
+                            ) : null}
+
                             <div className="preview-card max-h-[420px] overflow-auto p-3">
                                 {segments.length ? (
                                     <div className="grid gap-1.5">
                                         {segments.map((segment, index) => (
-                                            <div key={`${segment.id ?? index}-${segment.start}`} className="rounded-lg px-2 py-1.5">
+                                            <button
+                                                key={`${segment.id ?? index}-${segment.start}`}
+                                                type="button"
+                                                onClick={() => seekToSegment(segment, index)}
+                                                data-active={activeSegment === index}
+                                                className={cn(
+                                                    "w-full rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-foreground/5",
+                                                    activeSegment === index && "bg-foreground/10",
+                                                )}
+                                            >
                                                 <div className="flex flex-wrap items-center gap-2 text-xs">
                                                     <code className="app-codeblock rounded px-1.5 py-0.5 font-semibold">
                                                         [{formatTimecode(segment.start)}]
@@ -711,7 +993,7 @@ export function TranscribeWorkspace() {
                                                     ) : null}
                                                 </div>
                                                 <p className="mt-1 text-sm leading-5">{segment.text.trim()}</p>
-                                            </div>
+                                            </button>
                                         ))}
                                         <div ref={segmentsEndRef} />
                                     </div>
@@ -745,6 +1027,40 @@ export function TranscribeWorkspace() {
                     )}
                 </Panel>
             </motion.div>
+
+            {status === "done" && jobId ? (
+                <motion.div {...cardEnter}>
+                    <Panel title="Resumo (LLM)" subtitle="Gere um resumo da transcricao via API compativel com OpenAI (Ollama, etc)." icon={Sparkles}>
+                        <div className="grid gap-4">
+                            <div className="grid gap-3 md:grid-cols-2">
+                                <TextField label="Base URL" value={llmBaseUrl} onChange={setLlmBaseUrl} placeholder={DEFAULT_LLM_BASE_URL} />
+                                <TextField label="Modelo" value={llmModel} onChange={setLlmModel} placeholder={DEFAULT_LLM_MODEL} />
+                            </div>
+                            <TextField label="API key (opcional)" value={llmApiKey} onChange={setLlmApiKey} placeholder="sk-..." type="password" />
+
+                            <Button onClick={handleSummarize} disabled={summarizing}>
+                                {summarizing ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                                Resumir
+                            </Button>
+
+                            {summaryError ? (
+                                <div className="app-alert rounded-xl px-4 py-3 text-sm">
+                                    <div className="flex gap-2">
+                                        <Sparkles className="mt-0.5 size-4 shrink-0" />
+                                        <span className="whitespace-pre-wrap">{summaryError}</span>
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            {summaryText ? (
+                                <div className="preview-card max-h-[420px] overflow-auto p-4">
+                                    <pre className="whitespace-pre-wrap font-sans text-sm leading-6">{summaryText}</pre>
+                                </div>
+                            ) : null}
+                        </div>
+                    </Panel>
+                </motion.div>
+            ) : null}
         </div>
     )
 }

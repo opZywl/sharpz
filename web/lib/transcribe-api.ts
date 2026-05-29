@@ -53,6 +53,17 @@ export interface StartTranscriptionResult {
     job_id: string
 }
 
+export interface SummarizeOptions {
+    base_url: string
+    api_key?: string
+    model: string
+    language?: string
+}
+
+export interface SummarizeResult {
+    summary: string
+}
+
 const BASE = "/api/transcribe"
 
 export async function startTranscription(form: FormData): Promise<StartTranscriptionResult> {
@@ -88,6 +99,23 @@ export function openStream(jobId: string, onEvent: (event: TranscribeEvent) => v
 
 export function downloadUrl(jobId: string, format: string): string {
     return `${BASE}/jobs/${jobId}/download?format=${encodeURIComponent(format)}`
+}
+
+export function audioUrl(jobId: string): string {
+    return `${BASE}/jobs/${jobId}/audio`
+}
+
+export async function summarize(jobId: string, options: SummarizeOptions): Promise<SummarizeResult> {
+    const response = await fetch(`${BASE}/jobs/${jobId}/summarize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options),
+    })
+    if (!response.ok) {
+        const text = await response.text()
+        throw new Error(text || `HTTP ${response.status}`)
+    }
+    return (await response.json()) as SummarizeResult
 }
 
 export async function getModels(): Promise<TranscribeModel[]> {

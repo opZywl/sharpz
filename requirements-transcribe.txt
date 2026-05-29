@@ -15,3 +15,7 @@ torchaudio==2.8.0
 whisperx
 pyannote.audio
 imageio-ffmpeg
+
+# yt-dlp: usado pelo BACKEND (venv principal, Python 3.13), nao pelo motor.
+# Baixa o melhor audio de URLs (YouTube etc) antes de transcrever.
+yt-dlp

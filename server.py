@@ -17,9 +17,13 @@ from __future__ import annotations
 import base64
 import io
 import importlib.util
+import json as _json
+import mimetypes
 import shutil
 import tempfile
 import time
+import urllib.error
+import urllib.request
 import uuid
 from dataclasses import replace as dc_replace
 from pathlib import Path
@@ -310,6 +314,17 @@ class TranscribeCapabilitiesResponse(BaseModel):
     diarization: bool
     venv: bool
     default_model: str
+
+
+class TranscribeSummarizeRequest(BaseModel):
+    base_url: str
+    api_key: str = ""
+    model: str
+    language: str = "pt"
+
+
+class TranscribeSummarizeResponse(BaseModel):
+    summary: str
 
 
 # ────────── Endpoints ──────────
@@ -957,6 +972,7 @@ def _parse_formats(formats: str) -> list[str]:
 async def transcribe_create(
     file: UploadFile | None = File(None),
     local_path: str = Form(""),
+    url: str = Form(None),
     model: str = Form(TRANSCRIBE_DEFAULT_MODEL),
     language: str = Form("auto"),
     formats: str = Form("txt,srt,vtt,json,lrc"),
@@ -970,6 +986,8 @@ async def transcribe_create(
     threads: int | None = Form(None),
 ) -> TranscribeJobCreated:
     selected_model = model if model in TRANSCRIBE_VALID_MODELS else TRANSCRIBE_DEFAULT_MODEL
+
+    source_url = (url or "").strip()
 
     input_path: str | None = None
     if file is not None and file.filename:
@@ -986,11 +1004,14 @@ async def transcribe_create(
         if not candidate.exists():
             raise HTTPException(status_code=400, detail=f"Caminho local nao encontrado: {candidate}")
         input_path = str(candidate)
+    elif source_url:
+        input_path = None
     else:
-        raise HTTPException(status_code=400, detail="Envie um arquivo ou informe local_path.")
+        raise HTTPException(status_code=400, detail="Envie um arquivo, informe local_path ou uma url.")
 
     options = {
         "input_path": input_path,
+        "url": source_url or None,
         "model": selected_model,
         "language": language or "auto",
         "formats": _parse_formats(formats),
@@ -1054,6 +1075,88 @@ async def transcribe_job_download(job_id: str, format: str) -> FileResponse:
     if path is None:
         raise HTTPException(status_code=404, detail=f"Arquivo '{fmt}' indisponivel para este job.")
     return FileResponse(str(path), filename=path.name, media_type="application/octet-stream")
+
+
+@app.get("/api/transcribe/jobs/{job_id}/audio")
+async def transcribe_job_audio(job_id: str) -> FileResponse:
+    if TRANSCRIBE_STORE.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    path = TRANSCRIBE_STORE.get_input_path(job_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Midia de entrada indisponivel para este job.")
+    media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    return FileResponse(
+        str(path),
+        media_type=media_type,
+        content_disposition_type="inline",
+    )
+
+
+@app.post("/api/transcribe/jobs/{job_id}/summarize", response_model=TranscribeSummarizeResponse)
+async def transcribe_job_summarize(job_id: str, payload: TranscribeSummarizeRequest) -> TranscribeSummarizeResponse:
+    segments = TRANSCRIBE_STORE.get_segments(job_id)
+    if segments is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    text = "\n".join((seg.get("text") or "").strip() for seg in segments if (seg.get("text") or "").strip())
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Este job ainda nao tem texto transcrito para resumir.")
+
+    base_url = payload.base_url.strip().rstrip("/")
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Informe a base_url do endpoint LLM (ex: http://localhost:11434/v1).")
+    if not payload.model.strip():
+        raise HTTPException(status_code=400, detail="Informe o modelo do LLM.")
+
+    body = {
+        "model": payload.model.strip(),
+        "messages": [
+            {
+                "role": "system",
+                "content": "Voce resume transcricoes em PORTUGUES de forma clara e estruturada (titulo, bullets dos pontos principais, e proximos passos se houver).",
+            },
+            {"role": "user", "content": text},
+        ],
+        "temperature": 0.3,
+        "stream": False,
+    }
+    headers = {"Content-Type": "application/json"}
+    if payload.api_key.strip():
+        headers["Authorization"] = f"Bearer {payload.api_key.strip()}"
+
+    request = urllib.request.Request(
+        f"{base_url}/chat/completions",
+        data=_json.dumps(body).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            data = _json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            detail = ""
+        raise HTTPException(
+            status_code=502,
+            detail=f"O LLM em {base_url} respondeu com erro {exc.code}. {detail}".strip(),
+        )
+    except urllib.error.URLError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Nao consegui falar com o LLM em {base_url}. Verifique se o Ollama/endpoint esta rodando. ({exc.reason})",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao resumir via LLM em {base_url}: {exc}")
+
+    try:
+        summary = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        raise HTTPException(status_code=502, detail="Resposta do LLM em formato inesperado (sem choices/message).")
+
+    return TranscribeSummarizeResponse(summary=summary)
 
 
 if __name__ == "__main__":
