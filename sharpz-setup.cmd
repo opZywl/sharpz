@@ -134,6 +134,11 @@ if not exist "%ROOT%\web\node_modules" (
 )
 echo.
 
+echo Encerrando instancias anteriores nas portas 8000 e 5174 (evita conflito e Internal Server Error)...
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr "LISTENING" ^| findstr ":8000"') do taskkill /F /PID %%p >nul 2>nul
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr "LISTENING" ^| findstr ":5174"') do taskkill /F /PID %%p >nul 2>nul
+echo.
+
 echo %C_CYAN%[6/8] Subindo o backend na porta 8000...%C_RESET%
 start "Sharpz API" cmd /c ""%BPY%" "%ROOT%\server.py" > "%ROOT%\fastapi.log" 2> "%ROOT%\fastapi.err.log""
 echo %C_CYAN%  Aguardando healthcheck em %API_URL% ...%C_RESET%
