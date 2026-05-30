@@ -54,7 +54,6 @@ function Dashboard() {
     function openModule(module: ModuleId) {
         setActiveModule(module)
         setActiveTool(null)
-        setExpanded((current) => ({ ...current, [module]: true }))
     }
 
     function goHome() {
@@ -87,9 +86,9 @@ function Dashboard() {
                                 </span>
                                 <div className="min-w-0">
                                     <h1 className="font-jakarta text-lg font-extrabold uppercase leading-none tracking-tight">
-                                        Cleanup Image
+                                        Sharpz
                                     </h1>
-                                    <p className="app-faint mt-1 text-xs">Portfolio tools</p>
+                                    <p className="app-faint mt-1 text-xs">Painel de ferramentas</p>
                                 </div>
                             </button>
 

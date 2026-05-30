@@ -19,9 +19,9 @@ const jakarta = Plus_Jakarta_Sans({
 })
 
 export const metadata: Metadata = {
-    title: "Cleanup Image",
+    title: "Sharpz",
     description:
-        "High-fidelity background removal and PNG to SVG vectorization. Luma keying for neon, AI segmentation for photos.",
+        "Sharpz — remocao de fundo, vetorizacao SVG, texturas KTX2 e transcricao de video. Tudo num so painel.",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

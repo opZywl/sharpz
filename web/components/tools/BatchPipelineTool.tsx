@@ -141,8 +141,8 @@ export function BatchPipelineTool() {
                 <Panel title="Batch Pipeline" subtitle="Mesmo poder do CLI pela web, usando caminhos locais absolutos." icon={FolderOpen}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
-                            <TextField label="Input path" value={batchPipeline.inputPath} onChange={(inputPath) => setBatchPipeline((current) => ({ ...current, inputPath }))} placeholder="C:/Users/zywl/WebstormProjects/cleanup-image/samples" />
-                            <TextField label="Output dir" value={batchPipeline.outputPath} onChange={(outputPath) => setBatchPipeline((current) => ({ ...current, outputPath }))} placeholder="C:/Users/zywl/WebstormProjects/cleanup-image/output" />
+                            <TextField label="Input path" value={batchPipeline.inputPath} onChange={(inputPath) => setBatchPipeline((current) => ({ ...current, inputPath }))} placeholder="C:/caminho/para/imagens" />
+                            <TextField label="Output dir" value={batchPipeline.outputPath} onChange={(outputPath) => setBatchPipeline((current) => ({ ...current, outputPath }))} placeholder="C:/caminho/para/saida" />
                         </div>
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             <SelectField label="Metodo" value={batchPipeline.method} options={methodOptions} onChange={(method) => setBatchPipeline((current) => ({ ...current, method }))} />

@@ -79,7 +79,7 @@ export function KtxBatchTool() {
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
                             <TextField label="Pasta input" value={ktxBatch.folderPath} onChange={(folderPath) => setKtxBatch((current) => ({ ...current, folderPath }))} placeholder="C:/Users/zywl/WebstormProjects/portfolio/yzy/static/..." />
-                            <TextField label="Pasta output" value={ktxBatch.outputPath} onChange={(outputPath) => setKtxBatch((current) => ({ ...current, outputPath }))} placeholder="C:/Users/zywl/WebstormProjects/cleanup-image/output_ktx" />
+                            <TextField label="Pasta output" value={ktxBatch.outputPath} onChange={(outputPath) => setKtxBatch((current) => ({ ...current, outputPath }))} placeholder="C:/caminho/para/saida-ktx" />
                         </div>
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             <SelectField label="Preset" value={ktxBatch.preset} options={ktxPresetOptions} onChange={(preset) => setKtxBatch((current) => ({ ...current, preset }))} />
