@@ -4,6 +4,7 @@ import {
     FileCode2,
     FolderOpen,
     FolderSync,
+    HardDriveDownload,
     ImagePlus,
     PackageCheck,
     Scissors,
@@ -23,9 +24,10 @@ export type ToolId =
     | "ktx-orientation"
     | "portfolio-ktx"
     | "transcribe"
+    | "packages"
     | "system"
 
-export type ModuleId = "imagem" | "vetor" | "ktx" | "transcricao" | "sistema"
+export type ModuleId = "imagem" | "vetor" | "ktx" | "transcricao" | "pacotes" | "sistema"
 
 export interface Tool {
     id: ToolId
@@ -169,6 +171,26 @@ export const MODULES: Module[] = [
                     "Envie um video ou audio e receba o texto, com legendas e separacao de quem fala.",
                 icon: AudioLines,
                 accent: "text-rose-600 dark:text-rose-200",
+            },
+        ],
+    },
+    {
+        id: "pacotes",
+        title: "Baixar pacotes",
+        label: "Instalar dependencias",
+        description:
+            "Central de instalacao do Sharpz. Veja o que ja esta instalado e o que falta (ffmpeg, modelo large-v3 ~3GB, KTX-Software, Ollama...) e instale cada item com 1 clique, acompanhando o progresso ao vivo.",
+        icon: HardDriveDownload,
+        accent: "text-indigo-600 dark:text-indigo-200",
+        tools: [
+            {
+                id: "packages",
+                title: "Baixar pacotes",
+                label: "Dependencias",
+                description:
+                    "Detecta e instala tudo que o Sharpz precisa pra funcionar 100%, com log ao vivo.",
+                icon: HardDriveDownload,
+                accent: "text-indigo-600 dark:text-indigo-200",
             },
         ],
     },

@@ -6,6 +6,7 @@ import { CleanTool } from "@/components/tools/CleanTool"
 import { KtxBatchTool } from "@/components/tools/KtxBatchTool"
 import { KtxOrientationTool } from "@/components/tools/KtxOrientationTool"
 import { KtxSingleTool } from "@/components/tools/KtxSingleTool"
+import { PackagesTool } from "@/components/tools/PackagesTool"
 import { PipelineTool } from "@/components/tools/PipelineTool"
 import { PortfolioKtxTool } from "@/components/tools/PortfolioKtxTool"
 import { SvgTool } from "@/components/tools/SvgTool"
@@ -32,6 +33,8 @@ export function ToolHost({ tool }: { tool: ToolId }) {
             return <PortfolioKtxTool />
         case "transcribe":
             return <TranscribeWorkspace />
+        case "packages":
+            return <PackagesTool />
         case "system":
             return <SystemTool />
         default:

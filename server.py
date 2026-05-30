@@ -58,6 +58,11 @@ from src.ktx import (
     summarize as ktx_summarize,
 )
 from add_ktx_orientation import patch_orientation
+from packages import (
+    MANAGER as pkg_manager,
+    list_packages as pkg_list_packages,
+    stream_job as pkg_stream_job,
+)
 from transcribe.jobs import (
     DEFAULT_MODEL as TRANSCRIBE_DEFAULT_MODEL,
     STORE as TRANSCRIBE_STORE,
@@ -1168,6 +1173,58 @@ async def transcribe_job_summarize(job_id: str, payload: TranscribeSummarizeRequ
         raise HTTPException(status_code=502, detail="Resposta do LLM em formato inesperado (sem choices/message).")
 
     return TranscribeSummarizeResponse(summary=summary)
+
+
+class PackageInfo(BaseModel):
+    id: str
+    name: str
+    description: str
+    category: str
+    optional: bool
+    size_hint: str
+    installed: bool
+    detail: str
+    installable: bool
+    manual_hint: str
+    unlocks: list[str]
+
+
+class PackagesResponse(BaseModel):
+    packages: list[PackageInfo]
+
+
+class PackageInstallStarted(BaseModel):
+    job_id: str
+
+
+@app.get("/api/packages", response_model=PackagesResponse)
+async def packages_list() -> PackagesResponse:
+    return PackagesResponse(packages=[PackageInfo(**item) for item in pkg_list_packages()])
+
+
+@app.post("/api/packages/{package_id}/install", response_model=PackageInstallStarted)
+async def packages_install(package_id: str) -> PackageInstallStarted:
+    job_id = pkg_manager.start(package_id)
+    if job_id is None:
+        raise HTTPException(status_code=404, detail="Pacote desconhecido ou sem instalador automatico.")
+    return PackageInstallStarted(job_id=job_id)
+
+
+@app.get("/api/packages/jobs/{job_id}/stream")
+async def packages_stream(job_id: str) -> StreamingResponse:
+    return StreamingResponse(
+        pkg_stream_job(job_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/packages/jobs/{job_id}")
+async def packages_job(job_id: str) -> dict:
+    job = pkg_manager.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    return job.snapshot()
 
 
 if __name__ == "__main__":

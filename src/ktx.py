@@ -22,6 +22,7 @@ Module sits alongside background removal -independente, sem deps cruzadas.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -140,8 +141,23 @@ class ConversionResult:
 
 
 def find_toktx() -> Optional[str]:
-    """Retorna path do toktx, ou None se nao estiver instalado."""
-    return shutil.which("toktx")
+    """Retorna path do toktx, ou None se nao estiver instalado.
+
+    Procura no PATH e, como fallback, no diretorio padrao do instalador
+    oficial do KTX-Software (assim a deteccao funciona mesmo antes de um
+    novo shell recarregar o PATH).
+    """
+    found = shutil.which("toktx")
+    if found:
+        return found
+    candidates = [
+        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "KTX-Software" / "bin" / "toktx.exe",
+        Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "KTX-Software" / "bin" / "toktx.exe",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return None
 
 
 def install_hint() -> str:
