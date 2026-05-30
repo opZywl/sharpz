@@ -105,6 +105,15 @@ def _img_to_b64_png(img: Image.Image) -> str:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+def _img_to_b64(img: Image.Image, fmt: str = "png") -> str:
+    buf = io.BytesIO()
+    if str(fmt).lower() == "webp":
+        img.save(buf, format="WEBP", quality=92, method=6)
+    else:
+        img.save(buf, format="PNG", optimize=True)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
 async def _read_upload_image(file: UploadFile) -> tuple[bytes, Image.Image]:
     raw = await file.read()
     if not raw:
@@ -374,6 +383,7 @@ async def list_models() -> ModelsResponse:
 @app.post("/api/clean", response_model=CleanResponse)
 async def clean_image(
     file: UploadFile = File(...),
+    output_format: Literal["png", "webp"] = Form("png"),
     method: Literal["auto", "ai", "luma_dark", "luma_light", "none"] = Form("auto"),
     model: str = Form(DEFAULT_MODEL),
     alpha_matting: bool = Form(True),
@@ -423,7 +433,7 @@ async def clean_image(
         actual_method = _detect_method(src_img.convert("RGBA"))
 
     return CleanResponse(
-        cleaned_png_b64=_img_to_b64_png(cleaned),
+        cleaned_png_b64=_img_to_b64(cleaned, output_format),
         method_used=actual_method,
         elapsed_ms=elapsed_ms,
         image_width=cleaned.width,
@@ -494,6 +504,7 @@ async def vectorize_image(
 @app.post("/api/pipeline", response_model=PipelineResponse)
 async def pipeline(
     file: UploadFile = File(...),
+    output_format: Literal["png", "webp"] = Form("png"),
     method: Literal["auto", "ai", "luma_dark", "luma_light", "none"] = Form("auto"),
     model: str = Form(DEFAULT_MODEL),
     luma_low: float = Form(0.04),
@@ -553,7 +564,7 @@ async def pipeline(
         actual_method = _detect_method(src_img.convert("RGBA"))
 
     return PipelineResponse(
-        cleaned_png_b64=_img_to_b64_png(cleaned),
+        cleaned_png_b64=_img_to_b64(cleaned, output_format),
         svg_with_bg=svg_with_bg,
         svg_clean=svg_clean,
         svg_with_bg_preview_b64=svg_with_bg_preview,

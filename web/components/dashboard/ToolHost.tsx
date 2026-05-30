@@ -1,0 +1,40 @@
+"use client"
+
+import { TranscribeWorkspace } from "@/components/transcribe/transcribe-workspace"
+import { BatchPipelineTool } from "@/components/tools/BatchPipelineTool"
+import { CleanTool } from "@/components/tools/CleanTool"
+import { KtxBatchTool } from "@/components/tools/KtxBatchTool"
+import { KtxOrientationTool } from "@/components/tools/KtxOrientationTool"
+import { KtxSingleTool } from "@/components/tools/KtxSingleTool"
+import { PipelineTool } from "@/components/tools/PipelineTool"
+import { PortfolioKtxTool } from "@/components/tools/PortfolioKtxTool"
+import { SvgTool } from "@/components/tools/SvgTool"
+import { SystemTool } from "@/components/tools/SystemTool"
+import { ToolId } from "@/lib/modules"
+
+export function ToolHost({ tool }: { tool: ToolId }) {
+    switch (tool) {
+        case "clean":
+            return <CleanTool />
+        case "pipeline":
+            return <PipelineTool />
+        case "batch-pipeline":
+            return <BatchPipelineTool />
+        case "svg":
+            return <SvgTool />
+        case "ktx-single":
+            return <KtxSingleTool />
+        case "ktx-batch":
+            return <KtxBatchTool />
+        case "ktx-orientation":
+            return <KtxOrientationTool />
+        case "portfolio-ktx":
+            return <PortfolioKtxTool />
+        case "transcribe":
+            return <TranscribeWorkspace />
+        case "system":
+            return <SystemTool />
+        default:
+            return null
+    }
+}

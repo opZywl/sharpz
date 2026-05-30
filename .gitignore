@@ -42,3 +42,6 @@ Thumbs.db
 desktop.ini
 .idea/
 .vscode/
+
+# TS build info
+web/tsconfig.tsbuildinfo
