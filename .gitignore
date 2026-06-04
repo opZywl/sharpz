@@ -30,6 +30,8 @@ output/
 output/transcripts/
 output_ktx/
 .ktx_work/
+.transcribe-out/
+
 
 # Environment and secrets
 .env
