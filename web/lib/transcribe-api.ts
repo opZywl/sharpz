@@ -29,6 +29,22 @@ export interface TranscribeCapabilities {
     default_model: string
 }
 
+export interface CompleteManifest {
+    slug: string
+    title: string
+    out_dir: string
+    dest_dir: string | null
+    zip: string | null
+    frames: number
+    images: string[]
+    captions: Record<string, string | null>
+    contact_sheets: string[]
+    docs: string[]
+    transcripts: string[]
+    docs_generated: boolean
+    degraded: string[]
+}
+
 export interface TranscribeJob {
     job_id: string
     status: "queued" | "running" | "done" | "error"
@@ -42,6 +58,7 @@ export interface TranscribeJob {
     error: string | null
     elapsed: number | null
     options: Record<string, unknown>
+    complete: CompleteManifest | null
 }
 
 export interface TranscribeEvent {
@@ -116,6 +133,31 @@ export async function summarize(jobId: string, options: SummarizeOptions): Promi
         throw new Error(text || `HTTP ${response.status}`)
     }
     return (await response.json()) as SummarizeResult
+}
+
+export async function getComplete(jobId: string): Promise<CompleteManifest> {
+    const response = await fetch(`${BASE}/jobs/${jobId}/complete`)
+    if (!response.ok) {
+        const text = await response.text()
+        throw new Error(text || `HTTP ${response.status}`)
+    }
+    return (await response.json()) as CompleteManifest
+}
+
+export function completeFileUrl(jobId: string, path: string): string {
+    return `${BASE}/jobs/${jobId}/complete/file?path=${encodeURIComponent(path)}`
+}
+
+export function completeZipUrl(jobId: string): string {
+    return `${BASE}/jobs/${jobId}/complete/zip`
+}
+
+export async function openCompleteFolder(jobId: string): Promise<void> {
+    const response = await fetch(`${BASE}/jobs/${jobId}/complete/open-folder`, { method: "POST" })
+    if (!response.ok) {
+        const text = await response.text()
+        throw new Error(text || `HTTP ${response.status}`)
+    }
 }
 
 export async function getModels(): Promise<TranscribeModel[]> {

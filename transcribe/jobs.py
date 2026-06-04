@@ -9,6 +9,8 @@ import time
 import uuid
 from pathlib import Path
 
+from transcribe import complete as complete_mod
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VENV_PYTHON = REPO_ROOT / "whisper-venv" / "Scripts" / "python.exe"
 BACKEND_PYTHON = REPO_ROOT / "venv" / "Scripts" / "python.exe"
@@ -72,6 +74,7 @@ class JobStore:
             "elapsed": None,
             "options": options,
             "input_path": options.get("input_path"),
+            "complete": None,
             "events": queue.Queue(),
         }
         with self._lock:
@@ -198,6 +201,8 @@ class JobStore:
         env["PYTHONUTF8"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
 
+        is_complete = options.get("mode") == "complete"
+
         self._set(job_id, status="running", stage="start")
         start = time.perf_counter()
 
@@ -221,6 +226,11 @@ class JobStore:
             except json.JSONDecodeError:
                 continue
             self._apply_event(job_id, event)
+            if is_complete and event.get("type") == "done":
+                # No modo complete a transcricao e so o primeiro estagio:
+                # registra os arquivos mas nao encerra o stream do cliente.
+                self._push(job_id, {"type": "stage", "stage": "transcribe", "status": "done"})
+                continue
             self._push(job_id, event)
 
         proc.wait()
@@ -228,6 +238,15 @@ class JobStore:
         elapsed = round(time.perf_counter() - start, 2)
 
         if proc.returncode == 0:
+            if is_complete:
+                try:
+                    self._run_complete(job_id, options, out_dir)
+                except Exception as exc:
+                    self._push(job_id, {"type": "stage", "stage": "complete", "status": "skipped", "detail": str(exc)})
+                    with self._lock:
+                        job = self._jobs.get(job_id)
+                        if job is not None and "complete" not in job["degraded"]:
+                            job["degraded"].append("complete")
             with self._lock:
                 job = self._jobs.get(job_id)
                 final_elapsed = job.get("elapsed") if job else None
@@ -343,6 +362,79 @@ class JobStore:
             if fields:
                 self._set(job_id, **fields)
 
+    def _run_complete(self, job_id: str, options: dict, out_dir: Path) -> None:
+        snapshot = self.get(job_id)
+        if snapshot is None:
+            return
+
+        def emit(event: dict) -> None:
+            self._apply_event(job_id, event)
+            self._push(job_id, event)
+
+        info = {
+            "language": snapshot.get("language"),
+            "duration": snapshot.get("duration"),
+            "model": options.get("model"),
+        }
+        manifest = complete_mod.run(
+            job_id,
+            Path(options["input_path"]),
+            out_dir,
+            snapshot.get("segments") or [],
+            info,
+            options,
+            emit,
+        )
+        self._set(job_id, complete=manifest)
+        for stage in manifest.get("degraded", []):
+            with self._lock:
+                job = self._jobs.get(job_id)
+                if job is not None and stage not in job["degraded"]:
+                    job["degraded"].append(stage)
+
+    def get_complete_manifest(self, job_id: str) -> dict | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            return dict(job["complete"]) if job.get("complete") else None
+
+    def get_complete_file(self, job_id: str, rel: str) -> Path | None:
+        base = (OUTPUT_ROOT / job_id).resolve()
+        try:
+            target = (base / rel).resolve()
+        except (OSError, ValueError):
+            return None
+        if base != target and base not in target.parents:
+            return None
+        return target if target.exists() and target.is_file() else None
+
+    def get_zip(self, job_id: str) -> Path | None:
+        manifest = self.get_complete_manifest(job_id)
+        if not manifest or not manifest.get("zip"):
+            return None
+        path = Path(manifest["zip"])
+        return path if path.exists() else None
+
+    def open_complete_folder(self, job_id: str) -> bool:
+        manifest = self.get_complete_manifest(job_id)
+        target = None
+        if manifest and manifest.get("dest_dir") and Path(manifest["dest_dir"]).exists():
+            target = Path(manifest["dest_dir"])
+        else:
+            candidate = OUTPUT_ROOT / job_id
+            target = candidate if candidate.exists() else None
+        if target is None:
+            return False
+        try:
+            if os.name == "nt":
+                os.startfile(str(target))  # noqa: S606
+            else:
+                subprocess.Popen(["xdg-open", str(target)])
+            return True
+        except Exception:
+            return False
+
     def _write_meta(self, job_id: str, out_dir: Path) -> None:
         snapshot = self.get(job_id)
         if snapshot is None:
@@ -367,6 +459,7 @@ def _public_view(job: dict) -> dict:
         "elapsed": job["elapsed"],
         "options": dict(job["options"]),
         "input_path": job.get("input_path"),
+        "complete": dict(job["complete"]) if job.get("complete") else None,
     }
 
 

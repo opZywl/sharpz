@@ -8,10 +8,10 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", line_bufferin
 import argparse
 import json
 import os
-import shutil
 import time
 from pathlib import Path
 
+from transcribe.ffmpeg_util import ensure_ffmpeg
 from transcribe.formats import write_all
 
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
@@ -21,48 +21,6 @@ os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "120")
 
 def emit(obj: dict) -> None:
     print(json.dumps(obj, ensure_ascii=False), flush=True)
-
-
-def _prepend_path(directory: str) -> None:
-    if directory:
-        os.environ["PATH"] = directory + os.pathsep + os.environ.get("PATH", "")
-
-
-def ensure_ffmpeg() -> None:
-    if shutil.which("ffmpeg"):
-        return
-    if os.name == "nt":
-        try:
-            import winreg
-
-            for root, sub in (
-                (winreg.HKEY_CURRENT_USER, "Environment"),
-                (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"),
-            ):
-                try:
-                    with winreg.OpenKey(root, sub) as key:
-                        value, _ = winreg.QueryValueEx(key, "Path")
-                        _prepend_path(os.path.expandvars(value))
-                except OSError:
-                    pass
-            if shutil.which("ffmpeg"):
-                return
-            import glob
-
-            base = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages")
-            for exe in glob.glob(os.path.join(base, "Gyan.FFmpeg*", "**", "ffmpeg.exe"), recursive=True):
-                _prepend_path(os.path.dirname(exe))
-                if shutil.which("ffmpeg"):
-                    return
-        except Exception:
-            pass
-    try:
-        import imageio_ffmpeg
-
-        exe = imageio_ffmpeg.get_ffmpeg_exe()
-        _prepend_path(str(Path(exe).parent))
-    except Exception:
-        pass
 
 
 def speaker_label(raw: str | None) -> str | None:

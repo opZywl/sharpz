@@ -9,6 +9,9 @@ import {
     Clipboard,
     ClipboardCheck,
     Download,
+    FileText,
+    FolderOpen,
+    Images,
     Loader2,
     Mic,
     Play,
@@ -16,6 +19,7 @@ import {
     Sparkles,
     Square,
     Users,
+    Wand2,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
@@ -23,12 +27,17 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
     audioUrl,
+    completeFileUrl,
+    completeZipUrl,
     downloadUrl,
     getCapabilities,
+    getComplete,
     getModels,
+    openCompleteFolder,
     openStream,
     startTranscription,
     summarize,
+    type CompleteManifest,
     type TranscribeCapabilities,
     type TranscribeEvent,
     type TranscribeModel,
@@ -60,6 +69,12 @@ const LLM_MODEL_KEY = "cleanup-image.llm-model"
 const LLM_API_KEY_KEY = "cleanup-image.llm-api-key"
 const DEFAULT_LLM_BASE_URL = "http://localhost:11434/v1"
 const DEFAULT_LLM_MODEL = "llama3.1"
+const VISION_BASE_URL_KEY = "cleanup-image.vision-base-url"
+const VISION_MODEL_KEY = "cleanup-image.vision-model"
+const VISION_API_KEY_KEY = "cleanup-image.vision-api-key"
+const OUTPUT_DIR_KEY = "cleanup-image.complete-output-dir"
+const DEFAULT_VISION_BASE_URL = "http://localhost:11434/v1"
+const DEFAULT_VISION_MODEL = "llama3.2-vision"
 
 const MEDIA_ACCEPT = ".mp4,.mkv,.mov,.webm,.mp3,.wav,.m4a,video/*,audio/*"
 
@@ -391,6 +406,21 @@ export function TranscribeWorkspace() {
     const [summarizing, setSummarizing] = useState(false)
     const [summaryError, setSummaryError] = useState<string | null>(null)
 
+    const [completeMode, setCompleteMode] = useState(false)
+    const [frameInterval, setFrameInterval] = useState("3")
+    const [sceneThreshold, setSceneThreshold] = useState("0.30")
+    const [genDocs, setGenDocs] = useState(true)
+    const [visionBaseUrl, setVisionBaseUrl] = useState(DEFAULT_VISION_BASE_URL)
+    const [visionModel, setVisionModel] = useState(DEFAULT_VISION_MODEL)
+    const [visionApiKey, setVisionApiKey] = useState("")
+    const [outputDir, setOutputDir] = useState("")
+    const [outputName, setOutputName] = useState("")
+    const [makeZip, setMakeZip] = useState(true)
+    const [openFolderOpt, setOpenFolderOpt] = useState(true)
+    const [completeManifest, setCompleteManifest] = useState<CompleteManifest | null>(null)
+    const [completeLoading, setCompleteLoading] = useState(false)
+    const [openingFolder, setOpeningFolder] = useState(false)
+
     const [activeSegment, setActiveSegment] = useState<number | null>(null)
     const [waveReady, setWaveReady] = useState(false)
     const [waveFailed, setWaveFailed] = useState(false)
@@ -473,6 +503,32 @@ export function TranscribeWorkspace() {
     }, [llmBaseUrl, llmModel, llmApiKey])
 
     useEffect(() => {
+        try {
+            const savedBase = window.localStorage.getItem(VISION_BASE_URL_KEY)
+            const savedModel = window.localStorage.getItem(VISION_MODEL_KEY)
+            const savedKey = window.localStorage.getItem(VISION_API_KEY_KEY)
+            const savedDir = window.localStorage.getItem(OUTPUT_DIR_KEY)
+            if (savedBase) setVisionBaseUrl(savedBase)
+            if (savedModel) setVisionModel(savedModel)
+            if (savedKey) setVisionApiKey(savedKey)
+            if (savedDir) setOutputDir(savedDir)
+        } catch {
+            // ignora indisponibilidade de localStorage
+        }
+    }, [])
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(VISION_BASE_URL_KEY, visionBaseUrl)
+            window.localStorage.setItem(VISION_MODEL_KEY, visionModel)
+            window.localStorage.setItem(VISION_API_KEY_KEY, visionApiKey)
+            window.localStorage.setItem(OUTPUT_DIR_KEY, outputDir)
+        } catch {
+            // ignora indisponibilidade de localStorage
+        }
+    }, [visionBaseUrl, visionModel, visionApiKey, outputDir])
+
+    useEffect(() => {
         return () => {
             sourceRef.current?.close()
             if (recordTimerRef.current) window.clearInterval(recordTimerRef.current)
@@ -525,6 +581,8 @@ export function TranscribeWorkspace() {
         setCopied(false)
         setSummaryText("")
         setSummaryError(null)
+        setCompleteManifest(null)
+        setCompleteLoading(false)
         setActiveSegment(null)
         setWaveReady(false)
         setWaveFailed(false)
@@ -616,6 +674,22 @@ export function TranscribeWorkspace() {
             if (hfToken.trim()) form.append("hf_token", hfToken.trim())
             if (diarize && minSpeakers.trim()) form.append("min_speakers", minSpeakers.trim())
             if (diarize && maxSpeakers.trim()) form.append("max_speakers", maxSpeakers.trim())
+
+            if (completeMode) {
+                form.append("mode", "complete")
+                form.append("frame_interval", frameInterval.trim() || "3")
+                form.append("scene_threshold", sceneThreshold.trim() || "0.30")
+                form.append("gen_docs", String(genDocs))
+                if (genDocs) {
+                    form.append("vision_base_url", visionBaseUrl.trim())
+                    form.append("vision_model", visionModel.trim())
+                    if (visionApiKey.trim()) form.append("vision_api_key", visionApiKey.trim())
+                }
+                if (outputDir.trim()) form.append("output_dir", outputDir.trim())
+                if (outputName.trim()) form.append("output_name", outputName.trim())
+                form.append("make_zip", String(makeZip))
+                form.append("open_folder", String(openFolderOpt))
+            }
 
             const { job_id } = await startTranscription(form)
             setJobId(job_id)
@@ -783,6 +857,37 @@ export function TranscribeWorkspace() {
         }
     }, [status, jobId])
 
+    useEffect(() => {
+        if (status !== "done" || !completeMode || !jobId || completeManifest) return
+        let cancelled = false
+        setCompleteLoading(true)
+        getComplete(jobId)
+            .then((manifest) => {
+                if (!cancelled) setCompleteManifest(manifest)
+            })
+            .catch(() => {
+                // pacote ainda nao disponivel ou job nao era complete
+            })
+            .finally(() => {
+                if (!cancelled) setCompleteLoading(false)
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [status, completeMode, jobId, completeManifest])
+
+    async function handleOpenFolder() {
+        if (!jobId) return
+        setOpeningFolder(true)
+        try {
+            await openCompleteFolder(jobId)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Nao foi possivel abrir a pasta.")
+        } finally {
+            setOpeningFolder(false)
+        }
+    }
+
     const running = status === "running"
     const availableFiles = Object.keys(resultFiles)
 
@@ -907,6 +1012,46 @@ export function TranscribeWorkspace() {
                             type="password"
                         />
 
+                        <div className="grid gap-3 rounded-xl border border-foreground/10 p-3">
+                            <CheckboxRow
+                                checked={completeMode}
+                                onChange={setCompleteMode}
+                                label="Modo Complete"
+                                helper="Gera frames, contact sheet, imagens curadas por cena e docs (README/FEEDBACK/SPEC) num passo so."
+                            />
+                            {completeMode ? (
+                                <div className="grid gap-3">
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                        <TextField label="Frame a cada (s)" value={frameInterval} onChange={setFrameInterval} placeholder="3" type="number" />
+                                        <TextField label="Sensibilidade de cena" value={sceneThreshold} onChange={setSceneThreshold} placeholder="0.30" type="number" />
+                                    </div>
+                                    <CheckboxRow
+                                        checked={genDocs}
+                                        onChange={setGenDocs}
+                                        label="Gerar docs (IA de visao)"
+                                        helper="Manda contact sheet + cenas + transcricao pro modelo multimodal e escreve README/FEEDBACK/SPEC."
+                                    />
+                                    {genDocs ? (
+                                        <div className="grid gap-3">
+                                            <div className="grid gap-3 md:grid-cols-2">
+                                                <TextField label="Vision base URL" value={visionBaseUrl} onChange={setVisionBaseUrl} placeholder={DEFAULT_VISION_BASE_URL} />
+                                                <TextField label="Vision modelo" value={visionModel} onChange={setVisionModel} placeholder={DEFAULT_VISION_MODEL} />
+                                            </div>
+                                            <TextField label="Vision API key (opcional)" value={visionApiKey} onChange={setVisionApiKey} placeholder="sk-..." type="password" />
+                                        </div>
+                                    ) : null}
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                        <TextField label="Nome da pasta (slug)" value={outputName} onChange={setOutputName} placeholder="auto (IA sugere)" />
+                                        <TextField label="Pasta de saida (opcional)" value={outputDir} onChange={setOutputDir} placeholder="C:/Users/zywl/WebstormProjects/sharpz" />
+                                    </div>
+                                    <div className="grid gap-2 md:grid-cols-2">
+                                        <CheckboxRow checked={makeZip} onChange={setMakeZip} label="Gerar .zip" />
+                                        <CheckboxRow checked={openFolderOpt} onChange={setOpenFolderOpt} label="Abrir pasta ao terminar" />
+                                    </div>
+                                </div>
+                            ) : null}
+                        </div>
+
                         <Button onClick={handleTranscribe} disabled={running} size="lg" className="w-full">
                             {running ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
                             Transcrever
@@ -1027,6 +1172,96 @@ export function TranscribeWorkspace() {
                     )}
                 </Panel>
             </motion.div>
+
+            {completeMode && status === "done" && jobId ? (
+                <motion.div {...cardEnter}>
+                    <Panel title="Pacote Complete" subtitle="Frames, contact sheet, imagens curadas e docs gerados a partir do video." icon={Wand2}>
+                        {completeLoading && !completeManifest ? (
+                            <div className="flex items-center justify-center gap-2 px-4 py-10 text-center">
+                                <Loader2 className="size-4 animate-spin" />
+                                <span className="app-muted text-sm">Montando o pacote (frames, cenas, docs)...</span>
+                            </div>
+                        ) : completeManifest ? (
+                            <div className="grid gap-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="font-jakarta text-base font-extrabold leading-tight">{completeManifest.title || completeManifest.slug}</div>
+                                        <div className="app-faint truncate text-xs">{completeManifest.dest_dir || completeManifest.out_dir}</div>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Button type="button" variant="outline" onClick={handleOpenFolder} disabled={openingFolder}>
+                                            {openingFolder ? <Loader2 className="size-4 animate-spin" /> : <FolderOpen className="size-4" />}
+                                            Abrir pasta
+                                        </Button>
+                                        {completeManifest.zip ? (
+                                            <Button asChild variant="outline">
+                                                <a href={completeZipUrl(jobId)}>
+                                                    <Archive className="size-4" />
+                                                    Baixar .zip
+                                                </a>
+                                            </Button>
+                                        ) : null}
+                                    </div>
+                                </div>
+
+                                {!completeManifest.docs_generated ? (
+                                    <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
+                                        Docs de IA nao foram gerados (Vision LLM desligado ou indisponivel). Frames, cenas e transcricao estao no pacote.
+                                    </div>
+                                ) : null}
+
+                                {completeManifest.docs.length ? (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {completeManifest.docs.map((doc) => (
+                                            <Button key={doc} asChild variant="outline">
+                                                <a href={completeFileUrl(jobId, doc)} target="_blank" rel="noreferrer">
+                                                    <FileText className="size-4" />
+                                                    {doc}
+                                                </a>
+                                            </Button>
+                                        ))}
+                                    </div>
+                                ) : null}
+
+                                <div className="grid gap-2">
+                                    <span className="field-label flex items-center gap-2">
+                                        <Images className="size-3.5" />
+                                        Imagens curadas ({completeManifest.images.length})
+                                    </span>
+                                    {completeManifest.images.length ? (
+                                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                                            {completeManifest.images.map((img) => {
+                                                const base = img.split("/").pop() ?? img
+                                                const caption = completeManifest.captions?.[base]
+                                                return (
+                                                    <a
+                                                        key={img}
+                                                        href={completeFileUrl(jobId, img)}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="group preview-card overflow-hidden rounded-lg"
+                                                    >
+                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                        <img src={completeFileUrl(jobId, img)} alt={caption ?? base} className="aspect-video w-full object-cover" loading="lazy" />
+                                                        <div className="px-2 py-1.5">
+                                                            <div className="truncate text-[11px] font-semibold">{base}</div>
+                                                            {caption ? <div className="app-faint line-clamp-2 text-[11px] leading-4">{caption}</div> : null}
+                                                        </div>
+                                                    </a>
+                                                )
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <EmptyState text="Nenhuma imagem curada (entrada sem video?)." />
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <EmptyState text="Pacote indisponivel." />
+                        )}
+                    </Panel>
+                </motion.div>
+            ) : null}
 
             {status === "done" && jobId ? (
                 <motion.div {...cardEnter}>

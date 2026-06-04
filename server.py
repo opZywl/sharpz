@@ -1000,6 +1000,17 @@ async def transcribe_create(
     min_speakers: int | None = Form(None),
     max_speakers: int | None = Form(None),
     threads: int | None = Form(None),
+    mode: str = Form("standard"),
+    frame_interval: float = Form(3.0),
+    scene_threshold: float = Form(0.30),
+    gen_docs: bool = Form(False),
+    vision_base_url: str = Form(""),
+    vision_api_key: str = Form(""),
+    vision_model: str = Form(""),
+    output_dir: str = Form(""),
+    output_name: str = Form(""),
+    make_zip: bool = Form(False),
+    open_folder: bool = Form(False),
 ) -> TranscribeJobCreated:
     selected_model = model if model in TRANSCRIBE_VALID_MODELS else TRANSCRIBE_DEFAULT_MODEL
 
@@ -1039,6 +1050,19 @@ async def transcribe_create(
         "min_speakers": min_speakers,
         "max_speakers": max_speakers,
         "threads": threads,
+        "mode": "complete" if mode.strip().lower() == "complete" else "standard",
+        "frame_interval": frame_interval,
+        "scene_threshold": scene_threshold,
+        "gen_docs": gen_docs,
+        "vision": {
+            "base_url": vision_base_url.strip(),
+            "api_key": vision_api_key.strip(),
+            "model": vision_model.strip(),
+        },
+        "output_dir": output_dir.strip() or None,
+        "output_name": output_name.strip() or None,
+        "make_zip": make_zip,
+        "open_folder": open_folder,
     }
     job_id = TRANSCRIBE_STORE.enqueue(options)
     return TranscribeJobCreated(job_id=job_id)
@@ -1173,6 +1197,47 @@ async def transcribe_job_summarize(job_id: str, payload: TranscribeSummarizeRequ
         raise HTTPException(status_code=502, detail="Resposta do LLM em formato inesperado (sem choices/message).")
 
     return TranscribeSummarizeResponse(summary=summary)
+
+
+@app.get("/api/transcribe/jobs/{job_id}/complete")
+async def transcribe_job_complete(job_id: str) -> dict:
+    if TRANSCRIBE_STORE.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    manifest = TRANSCRIBE_STORE.get_complete_manifest(job_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="Este job nao tem pacote Complete.")
+    return manifest
+
+
+@app.get("/api/transcribe/jobs/{job_id}/complete/file")
+async def transcribe_job_complete_file(job_id: str, path: str) -> FileResponse:
+    if TRANSCRIBE_STORE.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    resolved = TRANSCRIBE_STORE.get_complete_file(job_id, path)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="Arquivo nao encontrado no pacote.")
+    media_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
+    return FileResponse(str(resolved), media_type=media_type, content_disposition_type="inline")
+
+
+@app.get("/api/transcribe/jobs/{job_id}/complete/zip")
+async def transcribe_job_complete_zip(job_id: str) -> FileResponse:
+    if TRANSCRIBE_STORE.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    zip_path = TRANSCRIBE_STORE.get_zip(job_id)
+    if zip_path is None:
+        raise HTTPException(status_code=404, detail="Zip indisponivel para este job.")
+    return FileResponse(str(zip_path), filename=zip_path.name, media_type="application/zip")
+
+
+@app.post("/api/transcribe/jobs/{job_id}/complete/open-folder")
+async def transcribe_job_complete_open_folder(job_id: str) -> dict:
+    if TRANSCRIBE_STORE.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    ok = TRANSCRIBE_STORE.open_complete_folder(job_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Nao foi possivel abrir a pasta neste ambiente.")
+    return {"ok": True}
 
 
 class PackageInfo(BaseModel):
