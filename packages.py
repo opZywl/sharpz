@@ -210,6 +210,30 @@ def _check_ollama() -> tuple[bool, str]:
     return False, "nao instalado"
 
 
+_TESSERACT_DIRS = [
+    Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tesseract-OCR",
+    Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Tesseract-OCR",
+]
+
+
+def find_tesseract_path() -> Optional[str]:
+    path = _which("tesseract")
+    if path:
+        return path
+    for directory in _TESSERACT_DIRS:
+        candidate = directory / "tesseract.exe"
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def _check_tesseract() -> tuple[bool, str]:
+    path = find_tesseract_path()
+    if path:
+        return True, _version_of([path, "--version"])[:50] or "instalado"
+    return False, "nao instalado"
+
+
 # ----------------------------------------------------------------------------
 # Instaladores
 # ----------------------------------------------------------------------------
@@ -394,6 +418,14 @@ PACKAGES: list[Package] = [
         checker=_check_ollama, installer=_winget_installer("Ollama.Ollama"),
         manual_hint="Depois de instalar, rode: ollama pull llama3.1",
         unlocks=["Resumo por IA"],
+    ),
+    Package(
+        id="tesseract", name="Tesseract OCR (fallback Imagem -> PDF)",
+        description="Motor de OCR local. Fallback do modo Imagem -> PDF quando nao ha Vision LLM configurado. Sem ele, o PDF sai identico mas sem camada de texto.",
+        category="opcional", optional=True, size_hint="~100 MB",
+        checker=_check_tesseract, installer=_winget_installer("UB-Mannheim.TesseractOCR"),
+        manual_hint="Para OCR em portugues, instale tambem o idioma 'por' (por.traineddata) no instalador UB-Mannheim.",
+        unlocks=["OCR local (Imagem -> PDF)"],
     ),
 ]
 

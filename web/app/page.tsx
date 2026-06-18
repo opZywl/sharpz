@@ -34,6 +34,7 @@ function Dashboard() {
         vetor: false,
         ktx: false,
         transcricao: false,
+        documento: false,
         pacotes: false,
         sistema: false,
     })

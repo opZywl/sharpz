@@ -3,6 +3,7 @@
 import { TranscribeWorkspace } from "@/components/transcribe/transcribe-workspace"
 import { BatchPipelineTool } from "@/components/tools/BatchPipelineTool"
 import { CleanTool } from "@/components/tools/CleanTool"
+import { ImageToPdfTool } from "@/components/tools/ImageToPdfTool"
 import { KtxBatchTool } from "@/components/tools/KtxBatchTool"
 import { KtxOrientationTool } from "@/components/tools/KtxOrientationTool"
 import { KtxSingleTool } from "@/components/tools/KtxSingleTool"
@@ -33,6 +34,8 @@ export function ToolHost({ tool }: { tool: ToolId }) {
             return <PortfolioKtxTool />
         case "transcribe":
             return <TranscribeWorkspace />
+        case "image-to-pdf":
+            return <ImageToPdfTool />
         case "packages":
             return <PackagesTool />
         case "system":

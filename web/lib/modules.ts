@@ -2,6 +2,8 @@ import {
     AudioLines,
     Box,
     FileCode2,
+    FileText,
+    FileType2,
     FolderOpen,
     FolderSync,
     HardDriveDownload,
@@ -24,10 +26,11 @@ export type ToolId =
     | "ktx-orientation"
     | "portfolio-ktx"
     | "transcribe"
+    | "image-to-pdf"
     | "packages"
     | "system"
 
-export type ModuleId = "imagem" | "vetor" | "ktx" | "transcricao" | "pacotes" | "sistema"
+export type ModuleId = "imagem" | "vetor" | "ktx" | "transcricao" | "documento" | "pacotes" | "sistema"
 
 export interface Tool {
     id: ToolId
@@ -171,6 +174,26 @@ export const MODULES: Module[] = [
                     "Envie um video ou audio e receba o texto, com legendas e separacao de quem fala.",
                 icon: AudioLines,
                 accent: "text-rose-600 dark:text-rose-200",
+            },
+        ],
+    },
+    {
+        id: "documento",
+        title: "Documento (PDF)",
+        label: "Imagem em PDF editavel",
+        description:
+            "Converte uma imagem com texto num PDF visualmente identico a imagem + camada de texto real (selecionavel, pesquisavel e editavel). Le a imagem com IA de visao (ou Tesseract), com verificacao, e mostra o passo a passo ao vivo.",
+        icon: FileType2,
+        accent: "text-red-600 dark:text-red-200",
+        tools: [
+            {
+                id: "image-to-pdf",
+                title: "Imagem -> PDF",
+                label: "PDF editavel 100%",
+                description:
+                    "Imagem com texto -> PDF identico a imagem + camada de texto selecionavel/editavel. Le via Vision LLM (com verificacao) ou Tesseract, passo a passo ao vivo.",
+                icon: FileText,
+                accent: "text-red-600 dark:text-red-200",
             },
         ],
     },

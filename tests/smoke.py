@@ -134,6 +134,33 @@ def check_pipeline(base, png):
     assert data.get("cleaned_png_b64"), "'cleaned_png_b64' ausente ou vazio"
 
 
+def check_image_to_pdf(base, png):
+    status, raw = http_post_multipart(
+        base + "/api/image-to-pdf",
+        {"ocr_engine": "auto", "page_mode": "a4", "verify": "false"},
+        png,
+    )
+    assert status == 200, "status %s" % status
+    job_id = as_json(raw).get("job_id")
+    assert job_id, "'job_id' ausente"
+
+    deadline = time.perf_counter() + 60
+    state = None
+    while time.perf_counter() < deadline:
+        _, body = http_get(base + "/api/image-to-pdf/jobs/" + job_id)
+        state = as_json(body)
+        if state.get("status") in ("done", "error"):
+            break
+        time.sleep(0.3)
+    assert state and state.get("status") == "done", "job nao concluiu: %r" % (state and state.get("status"))
+
+    report = (state.get("manifest") or {}).get("report") or {}
+    assert report.get("glitch_total") == 0, "camada de texto com glitches: %r" % report.get("glitches")
+
+    pstatus, pdf = http_get(base + "/api/image-to-pdf/jobs/" + job_id + "/download")
+    assert pstatus == 200 and pdf[:4] == b"%PDF", "download nao retornou um PDF valido"
+
+
 CHECKS = [
     ("GET /api/health", check_health),
     ("GET /api/capabilities", check_capabilities),
@@ -143,6 +170,7 @@ CHECKS = [
     ("POST /api/clean", check_clean),
     ("POST /api/svg", check_svg),
     ("POST /api/pipeline", check_pipeline),
+    ("POST /api/image-to-pdf", check_image_to_pdf),
 ]
 
 

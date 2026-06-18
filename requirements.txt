@@ -10,3 +10,5 @@ resvg-py>=0.3.0
 # validacao PSNR/SSIM do output comprimido vs input original.
 scikit-image>=0.22.0
 alktx2>=0.1.6
+# Modo Imagem -> PDF editavel: gera o PDF (imagem + camada de texto invisivel).
+PyMuPDF>=1.24.0

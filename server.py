@@ -73,6 +73,11 @@ from transcribe.jobs import (
     venv_available as transcribe_venv_available,
     whisperx_available as transcribe_whisperx_available,
 )
+from imgpdf.jobs import (
+    STORE as IMGPDF_STORE,
+    UPLOAD_DIR as IMGPDF_UPLOAD_DIR,
+)
+from imgpdf.vision import tesseract_available as imgpdf_tesseract_available
 
 
 app = FastAPI(title="Cleanup Image API", version="1.0.0")
@@ -370,6 +375,7 @@ async def capabilities() -> CapabilityResponse:
             "ktx_toktx",
             "ktx_orientation_patch",
             "portfolio_ktx_960x540",
+            "image_to_pdf",
         ],
         endpoints=endpoints,
     )
@@ -1290,6 +1296,115 @@ async def packages_job(job_id: str) -> dict:
     if job is None:
         raise HTTPException(status_code=404, detail="Job nao encontrado.")
     return job.snapshot()
+
+
+# ────────── Image -> PDF ──────────
+
+
+class ImagePdfJobCreated(BaseModel):
+    job_id: str
+
+
+@app.post("/api/image-to-pdf", response_model=ImagePdfJobCreated)
+async def image_to_pdf_create(
+    file: UploadFile | None = File(None),
+    local_path: str = Form(""),
+    page_mode: Literal["auto", "a4"] = Form("auto"),
+    ocr_engine: Literal["auto", "vision", "tesseract"] = Form("auto"),
+    verify: bool = Form(True),
+    vision_base_url: str = Form(""),
+    vision_api_key: str = Form(""),
+    vision_model: str = Form(""),
+    output_dir: str = Form(""),
+    output_name: str = Form(""),
+    open_folder: bool = Form(False),
+) -> ImagePdfJobCreated:
+    input_path: str | None = None
+    if file is not None and file.filename:
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail="Arquivo enviado esta vazio.")
+        IMGPDF_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        safe_name = Path(file.filename).name or "imagem"
+        target = IMGPDF_UPLOAD_DIR / f"{uuid.uuid4().hex}_{safe_name}"
+        target.write_bytes(raw)
+        input_path = str(target)
+    elif local_path.strip():
+        candidate = Path(local_path.strip()).expanduser()
+        if not candidate.exists():
+            raise HTTPException(status_code=400, detail=f"Caminho local nao encontrado: {candidate}")
+        input_path = str(candidate)
+    else:
+        raise HTTPException(status_code=400, detail="Envie uma imagem ou informe local_path.")
+
+    options = {
+        "input_path": input_path,
+        "page_mode": page_mode,
+        "ocr_engine": ocr_engine,
+        "verify": verify,
+        "vision": {
+            "base_url": vision_base_url.strip(),
+            "api_key": vision_api_key.strip(),
+            "model": vision_model.strip(),
+        },
+        "output_dir": output_dir.strip() or None,
+        "output_name": output_name.strip() or None,
+        "open_folder": open_folder,
+    }
+    return ImagePdfJobCreated(job_id=IMGPDF_STORE.enqueue(options))
+
+
+@app.get("/api/image-to-pdf/capabilities")
+async def image_to_pdf_capabilities() -> dict:
+    return {"tesseract": imgpdf_tesseract_available()}
+
+
+@app.get("/api/image-to-pdf/jobs/{job_id}")
+async def image_to_pdf_job(job_id: str) -> dict:
+    state = IMGPDF_STORE.get(job_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    return state
+
+
+@app.get("/api/image-to-pdf/jobs/{job_id}/stream")
+async def image_to_pdf_stream(job_id: str) -> StreamingResponse:
+    if IMGPDF_STORE.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    return StreamingResponse(
+        IMGPDF_STORE.stream(job_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/image-to-pdf/jobs/{job_id}/download")
+async def image_to_pdf_download(job_id: str) -> FileResponse:
+    if IMGPDF_STORE.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    path = IMGPDF_STORE.get_pdf(job_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="PDF indisponivel para este job.")
+    return FileResponse(str(path), filename="documento.pdf", media_type="application/pdf")
+
+
+@app.get("/api/image-to-pdf/jobs/{job_id}/preview")
+async def image_to_pdf_preview(job_id: str) -> FileResponse:
+    if IMGPDF_STORE.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    path = IMGPDF_STORE.get_preview(job_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Preview indisponivel para este job.")
+    return FileResponse(str(path), media_type="image/png", content_disposition_type="inline")
+
+
+@app.post("/api/image-to-pdf/jobs/{job_id}/open-folder")
+async def image_to_pdf_open_folder(job_id: str) -> dict:
+    if IMGPDF_STORE.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    if not IMGPDF_STORE.open_folder(job_id):
+        raise HTTPException(status_code=400, detail="Nao foi possivel abrir a pasta neste ambiente.")
+    return {"ok": True}
 
 
 if __name__ == "__main__":
