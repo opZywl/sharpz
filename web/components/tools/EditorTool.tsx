@@ -3,7 +3,7 @@
 import {
     AlignCenter, AlignLeft, AlignRight, Bold, BringToFront, ChevronDown, Copy, Download,
     FileImage, FileText, FolderOpen, Image as ImageIcon, Italic, Loader2, Lock, Maximize2,
-    Minimize2, Minus, Moon, Plus, Redo2, RotateCw, Save, SendToBack, Shapes, Slash, Square,
+    Minimize2, Minus, Moon, Plus, Redo2, RotateCw, Save, SendToBack, Settings2, Shapes, Slash, Square,
     Sun, Trash2, Type, Underline, Undo2, Unlock, Upload, ZoomIn, ZoomOut,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -67,11 +67,12 @@ export function EditorTool() {
     const [full, setFull] = useState(false)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
-    const [menu, setMenu] = useState<"" | "icon" | "shape" | "export">("")
+    const [menu, setMenu] = useState<"" | "icon" | "shape" | "export" | "page">("")
     const [guide, setGuide] = useState<{ x?: number; y?: number }>({})
     const [ctx, setCtx] = useState<{ sx: number; sy: number } | null>(null)
 
     const wrapRef = useRef<HTMLDivElement | null>(null)
+    const canvasRef = useRef<HTMLDivElement | null>(null)
     const drag = useRef<{ ids: string[]; px: number; py: number; pos: Record<string, { x: number; y: number }>; moved: boolean } | null>(null)
     const rez = useRef<{ id: string; px: number; py: number; w: number; h: number; fs: number } | null>(null)
     const clip = useRef<EditorElement[]>([])
@@ -116,13 +117,17 @@ export function EditorTool() {
     }, [elements, page, pageBg])
 
     useEffect(() => {
-        function measure() {
-            const w = wrapRef.current?.clientWidth ?? 700
-            const targetH = (full ? 0.82 : 0.64) * window.innerHeight
-            setFit(Math.min(1.4, Math.max(0.25, Math.min((w - 24) / page.w, targetH / page.h))))
+        const el = canvasRef.current
+        if (!el) return
+        const measure = () => {
+            const cw = el.clientWidth, ch = el.clientHeight
+            if (cw < 20 || ch < 20) return
+            setFit(Math.min(1.8, Math.max(0.2, Math.min((cw - 36) / page.w, (ch - 36) / page.h))))
         }
-        measure(); window.addEventListener("resize", measure)
-        return () => window.removeEventListener("resize", measure)
+        measure()
+        const ro = new ResizeObserver(measure)
+        ro.observe(el)
+        return () => ro.disconnect()
     }, [page.w, page.h, full])
 
     const selEls = elements.filter((e) => selected.includes(e.id))
@@ -287,12 +292,12 @@ export function EditorTool() {
     const isText = one && (!one.type || one.type === "text")
 
     return (
-        <div className={full ? "fixed inset-0 z-50 overflow-auto bg-background p-3" : "space-y-3"} style={full ? {} : undefined}>
-            <div className={full ? "space-y-3" : "space-y-3"}>
-                {error ? <div className="app-alert rounded-xl px-4 py-3 text-sm"><span className="whitespace-pre-wrap">{error}</span></div> : null}
+        <div className={full ? "fixed inset-0 z-[60] bg-background p-3" : ""}>
+            <div className="flex flex-col gap-2" style={{ height: full ? "100%" : "80vh" }}>
+                {error ? <div className="app-alert rounded-xl px-4 py-3 text-sm shrink-0"><span className="whitespace-pre-wrap">{error}</span></div> : null}
 
                 {/* barra principal */}
-                <div className="dashboard-shell"><div className="dashboard-inner flex flex-wrap items-center gap-2 p-3">
+                <div className="dashboard-shell shrink-0"><div className="dashboard-inner flex flex-wrap items-center gap-2 p-2">
                     <input ref={fileRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onImport(f); e.currentTarget.value = "" }} />
                     <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onImg(f); e.currentTarget.value = "" }} />
                     <input ref={projRef} type="file" accept="application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) openProject(f); e.currentTarget.value = "" }} />
@@ -314,7 +319,16 @@ export function EditorTool() {
                     <button className="icon-btn" title="Diminuir zoom" onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.1).toFixed(2)))}><ZoomOut className="size-4" /></button>
                     <button className="text-xs font-semibold tabular-nums" style={{ minWidth: 42 }} onClick={() => setZoom(1)} title="Resetar zoom">{Math.round(scale * 100)}%</button>
                     <button className="icon-btn" title="Aumentar zoom" onClick={() => setZoom((z) => Math.min(3, +(z + 0.1).toFixed(2)))}><ZoomIn className="size-4" /></button>
-                    <div className="ml-auto flex items-center gap-2">
+                    <div className="ml-auto flex items-center gap-1.5">
+                        <span className="app-faint mr-1 hidden text-xs sm:inline">{elements.length} itens{selected.length ? ` • ${selected.length} sel.` : ""}</span>
+                        <div className="relative">
+                            <Button variant="outline" size="sm" onClick={() => setMenu(menu === "page" ? "" : "page")}><Settings2 className="size-4" /> Página</Button>
+                            {menu === "page" ? <div className="pop flex flex-col gap-2.5 p-3 text-xs" style={{ top: "calc(100% + 6px)", right: 0, width: 234 }}>
+                                <label className="flex items-center justify-between gap-2">Tamanho <select value={Object.keys(SIZES).find((k) => SIZES[k].w === page.w) || "A4"} onChange={(e) => { snapshot(); setPage(SIZES[e.target.value]) }} className="app-input h-8" style={{ width: 120 }}>{Object.keys(SIZES).map((k) => <option key={k} value={k}>{k}</option>)}</select></label>
+                                <label className="flex items-center justify-between gap-2">Cor de fundo <span className="flex items-center gap-1"><input type="color" value={pageBg} onChange={(e) => setPageBg(e.target.value)} className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0" /><button className="icon-btn" title="Claro" onClick={() => setPageBg("#ffffff")}><Sun className="size-3.5" /></button><button className="icon-btn" title="Escuro" onClick={() => setPageBg("#070b0f")}><Moon className="size-3.5" /></button></span></label>
+                                {bg ? <button className="select-option" onClick={() => setShowBg((s) => !s)}>{showBg ? "Ocultar imagem de guia" : "Mostrar imagem de guia"}</button> : null}
+                            </div> : null}
+                        </div>
                         <button className="icon-btn" title="Salvar projeto (.json)" onClick={saveProject}><Save className="size-4" /></button>
                         <button className="icon-btn" title="Abrir projeto (.json)" onClick={() => projRef.current?.click()}><FolderOpen className="size-4" /></button>
                         <button className="icon-btn" title={full ? "Sair da tela cheia" : "Tela cheia"} onClick={() => setFull((f) => !f)}>{full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}</button>
@@ -325,20 +339,9 @@ export function EditorTool() {
                     </div>
                 </div></div>
 
-                {/* barra de pagina */}
-                <div className="dashboard-shell"><div className="dashboard-inner flex flex-wrap items-center gap-3 p-2.5 text-xs">
-                    <span className="app-faint font-semibold uppercase tracking-[0.14em]">Página</span>
-                    <select value={Object.keys(SIZES).find((k) => SIZES[k].w === page.w) || "A4"} onChange={(e) => { snapshot(); setPage(SIZES[e.target.value]) }} className="app-input h-8">{Object.keys(SIZES).map((k) => <option key={k} value={k}>{k}</option>)}</select>
-                    <label className="flex items-center gap-1.5">Fundo <input type="color" value={pageBg} onChange={(e) => setPageBg(e.target.value)} className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0" /></label>
-                    <button className="icon-btn" title="Claro" onClick={() => setPageBg("#ffffff")}><Sun className="size-4" /></button>
-                    <button className="icon-btn" title="Escuro" onClick={() => setPageBg("#070b0f")}><Moon className="size-4" /></button>
-                    {bg ? <Button variant="outline" size="sm" onClick={() => setShowBg((s) => !s)}>{showBg ? "Ocultar fundo importado" : "Mostrar fundo importado"}</Button> : null}
-                    <span className="app-faint ml-auto">{elements.length} itens • {selected.length} selecionado(s)</span>
-                </div></div>
-
                 {/* toolbar do elemento */}
                 {selEls.length ? (
-                    <div className="dashboard-shell"><div className="dashboard-inner flex flex-wrap items-center gap-2 p-2.5">
+                    <div className="dashboard-shell shrink-0"><div className="dashboard-inner flex flex-wrap items-center gap-2 p-2.5">
                         {isText ? <select value={one!.fontFamily || "Inter"} onChange={(e) => patchSel({ fontFamily: e.target.value })} className="app-input h-8 text-xs" style={{ minWidth: 150, fontFamily: `'${one!.fontFamily}',sans-serif` }}>{ALL_FONTS.map((f) => <option key={f} value={f} style={{ fontFamily: `'${f}',sans-serif` }}>{f}</option>)}</select> : null}
                         {one && one.type !== "rect" && one.type !== "image" ? (<>
                             <button className="icon-btn" title="Menor" onClick={() => patchSel({ fontSize: Math.max(2, +((one!.fontSize) - 1).toFixed(1)) })}><Minus className="size-4" /></button>
@@ -370,8 +373,8 @@ export function EditorTool() {
                 ) : null}
 
                 {/* canvas */}
-                <div ref={wrapRef} className="dashboard-shell"><div className="dashboard-inner flex justify-center overflow-auto p-3" style={{ maxHeight: full ? "82vh" : "70vh" }}>
-                    <div
+                <div className="dashboard-shell flex-1 min-h-0"><div ref={canvasRef} className="dashboard-inner flex h-full items-center justify-center overflow-auto p-4">
+                    <div ref={wrapRef}
                         onPointerDown={() => { setSelected([]); setEditing(null); setMenu(""); setCtx(null) }}
                         onContextMenu={(e) => e.preventDefault()}
                         style={{ position: "relative", flex: "0 0 auto", width: Wpx, height: Hpx, background: pageBg, boxShadow: "0 4px 24px rgba(0,0,0,.2)", borderRadius: 4, backgroundImage: bg && showBg ? `url(${bg})` : undefined, backgroundSize: "100% 100%", backgroundRepeat: "no-repeat" }}
@@ -424,11 +427,12 @@ export function EditorTool() {
                     </div>
                 </div></div>
 
-                <p className="app-faint text-xs">
-                    <b>Importar</b> PDF • <b>Texto/Ícone/Forma/Imagem</b> • arraste (com guias de alinhamento) • <b>2 cliques</b> edita texto • alça azul redimensiona •
-                    <b> Shift+clique</b> multi-seleção • <b>Ctrl+C/V/D</b>, <b>Del</b>, <b>setas</b>, <b>Ctrl+Z/Y</b>, <b>Ctrl+A</b> • botão direito = menu •
-                    qualquer <b>fonte</b>, opacidade, rotação, camadas, lock • <b>Tela cheia</b>, zoom, salvar/abrir projeto, autosave • <b>Baixar</b> PDF/PNG.
-                </p>
+                {!full ? (
+                    <p className="app-faint shrink-0 text-xs">
+                        <b>2 cliques</b> edita • arraste move (guias) • <b>alça azul</b> redimensiona • <b>Shift+clique</b> multi •
+                        <b> Ctrl+C/V/D</b>, Del, setas, <b>Ctrl+Z/Y</b>, Ctrl+A • botão direito = menu • <b>Tela cheia</b> p/ editar grande • <b>Baixar</b> PDF/PNG.
+                    </p>
+                ) : null}
             </div>
         </div>
     )
