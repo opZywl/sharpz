@@ -8,6 +8,7 @@ import {
     FolderSync,
     HardDriveDownload,
     ImagePlus,
+    MousePointer2,
     PackageCheck,
     Scissors,
     Server,
@@ -27,6 +28,7 @@ export type ToolId =
     | "portfolio-ktx"
     | "transcribe"
     | "image-to-pdf"
+    | "editor"
     | "packages"
     | "system"
 
@@ -194,6 +196,15 @@ export const MODULES: Module[] = [
                     "Imagem com texto -> PDF identico a imagem + camada de texto selecionavel/editavel. Le via Vision LLM (com verificacao) ou Tesseract, passo a passo ao vivo.",
                 icon: FileText,
                 accent: "text-red-600 dark:text-red-200",
+            },
+            {
+                id: "editor",
+                title: "Editor (Canva)",
+                label: "Arrastar e editar",
+                description:
+                    "Importe um PDF e edite como no Canva: cada texto vira uma caixa que voce arrasta, edita, muda fonte/tamanho/cor e alinha. Exporta de volta pra PDF com texto real.",
+                icon: MousePointer2,
+                accent: "text-fuchsia-600 dark:text-fuchsia-200",
             },
         ],
     },

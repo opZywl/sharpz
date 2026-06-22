@@ -346,6 +346,29 @@
     color: var(--app-bad);
 }
 
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--app-border);
+    background: var(--app-card);
+    color: var(--app-text);
+    transition: background .15s ease, border-color .15s ease;
+}
+
+.icon-btn:hover {
+    background: var(--app-hover);
+}
+
+.icon-btn[data-active="true"] {
+    background: var(--app-text);
+    color: var(--app-card);
+    border-color: var(--app-text);
+}
+
 .dropzone-shell {
     border: 1px dashed var(--app-border-strong);
     background: var(--app-card-muted);

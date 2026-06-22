@@ -30,9 +30,9 @@ from pathlib import Path
 from typing import Literal
 
 import resvg_py
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from PIL import Image
 from pydantic import BaseModel
 
@@ -78,6 +78,7 @@ from imgpdf.jobs import (
     UPLOAD_DIR as IMGPDF_UPLOAD_DIR,
 )
 from imgpdf.vision import tesseract_available as imgpdf_tesseract_available
+from imgpdf import editor as imgpdf_editor
 
 
 app = FastAPI(title="Cleanup Image API", version="1.0.0")
@@ -1405,6 +1406,64 @@ async def image_to_pdf_open_folder(job_id: str) -> dict:
     if not IMGPDF_STORE.open_folder(job_id):
         raise HTTPException(status_code=400, detail="Nao foi possivel abrir a pasta neste ambiente.")
     return {"ok": True}
+
+
+# ────────── Editor (Canva-like) ──────────
+
+
+@app.post("/api/editor/import")
+async def editor_import(
+    file: UploadFile = File(...),
+    render_bg: bool = Form(False),
+) -> dict:
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Arquivo vazio.")
+    name = (file.filename or "").lower()
+    try:
+        if name.endswith(".pdf"):
+            return imgpdf_editor.extract_elements(raw, render_bg=render_bg)
+        # imagem: vira 1 PDF de 1 pagina e extrai (sem texto -> 0 elementos, mas serve de fundo)
+        import fitz
+        doc = fitz.open(stream=raw, filetype=Path(name).suffix.lstrip(".") or "png")
+        pdf_bytes = doc.convert_to_pdf()
+        doc.close()
+        return imgpdf_editor.extract_elements(pdf_bytes, render_bg=True)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Nao consegui ler o arquivo: {exc}")
+
+
+@app.post("/api/editor/export")
+async def editor_export(payload: dict = Body(...)) -> Response:
+    if not isinstance(payload, dict) or not payload.get("elements"):
+        raise HTTPException(status_code=400, detail="Envie elements no corpo.")
+    try:
+        data = imgpdf_editor.build_pdf(payload)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Falha ao gerar PDF: {exc}")
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="documento-editado.pdf"'},
+    )
+
+
+@app.post("/api/editor/render-html")
+async def editor_render_html(payload: dict = Body(...)) -> Response:
+    html = (payload or {}).get("html") if isinstance(payload, dict) else None
+    if not html or not isinstance(html, str):
+        raise HTTPException(status_code=400, detail="Envie 'html' no corpo.")
+    try:
+        data = imgpdf_editor.render_html_pdf(html)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="documento-editado.pdf"'},
+    )
 
 
 if __name__ == "__main__":
