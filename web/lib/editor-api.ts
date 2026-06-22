@@ -1,8 +1,11 @@
+export type ElType = "text" | "icon" | "rect" | "line" | "image"
+
 export interface EditorElement {
     id: string
-    type?: "text" | "icon"
+    type?: ElType
     text: string
     icon?: string
+    src?: string
     x: number
     y: number
     w: number
@@ -10,9 +13,15 @@ export interface EditorElement {
     fontSize: number
     bold: boolean
     italic: boolean
+    underline?: boolean
     color: string
+    fill?: string
     align: "left" | "center" | "right"
     fontFamily?: string
+    lineHeight?: number
+    opacity?: number
+    rotation?: number
+    locked?: boolean
 }
 
 export interface EditorPage {
@@ -60,6 +69,18 @@ export async function renderHtml(html: string): Promise<Blob> {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ html }),
+    })
+    if (!res.ok) {
+        throw new Error((await res.text()) || `HTTP ${res.status}`)
+    }
+    return await res.blob()
+}
+
+export async function renderPng(html: string, w: number, h: number): Promise<Blob> {
+    const res = await fetch(`${BASE}/render-png`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ html, w, h, scale: 2 }),
     })
     if (!res.ok) {
         throw new Error((await res.text()) || `HTTP ${res.status}`)

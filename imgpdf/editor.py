@@ -47,6 +47,30 @@ def render_html_pdf(html: str) -> bytes:
             raise RuntimeError("Chrome nao gerou o PDF.")
         return op.read_bytes()
 
+
+def render_html_png(html: str, page_w: float, page_h: float, scale: int = 2) -> bytes:
+    """Renderiza o HTML (A4) em PNG via Chrome headless (screenshot WYSIWYG)."""
+    chrome = _find_chrome()
+    if not chrome:
+        raise RuntimeError("Google Chrome nao encontrado para exportar o PNG.")
+    w_px = max(1, round(page_w * 4 / 3))
+    h_px = max(1, round(page_h * 4 / 3))
+    scale = 1 if scale < 1 else 3 if scale > 3 else int(scale)
+    with tempfile.TemporaryDirectory() as tmp:
+        hp = Path(tmp) / "doc.html"
+        op = Path(tmp) / "out.png"
+        hp.write_text(html, encoding="utf-8")
+        url = "file:///" + str(hp).replace("\\", "/")
+        subprocess.run(
+            [chrome, "--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+             f"--force-device-scale-factor={scale}", "--virtual-time-budget=3500",
+             f"--window-size={w_px},{h_px}", f"--screenshot={op}", url],
+            timeout=90, capture_output=True,
+        )
+        if not op.exists():
+            raise RuntimeError("Chrome nao gerou o PNG.")
+        return op.read_bytes()
+
 _BOLD = 1 << 4
 _ITALIC = 1 << 1
 

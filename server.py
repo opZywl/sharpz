@@ -1466,6 +1466,26 @@ async def editor_render_html(payload: dict = Body(...)) -> Response:
     )
 
 
+@app.post("/api/editor/render-png")
+async def editor_render_png(payload: dict = Body(...)) -> Response:
+    if not isinstance(payload, dict) or not payload.get("html"):
+        raise HTTPException(status_code=400, detail="Envie 'html' no corpo.")
+    try:
+        data = imgpdf_editor.render_html_png(
+            payload["html"],
+            float(payload.get("w") or 595.276),
+            float(payload.get("h") or 841.89),
+            int(payload.get("scale") or 2),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return Response(
+        content=data,
+        media_type="image/png",
+        headers={"Content-Disposition": 'attachment; filename="documento-editado.png"'},
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
