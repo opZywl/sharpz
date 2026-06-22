@@ -289,7 +289,10 @@ export function EditorTool() {
     }
 
     const Wpx = page.w * scale, Hpx = page.h * scale
-    const isText = one && (!one.type || one.type === "text")
+    const textSel = selEls.filter((e) => !e.type || e.type === "text")
+    const repText = textSel[0]
+    const isText = textSel.length > 0
+    const sizeRep = selEls.find((e) => e.type !== "rect" && e.type !== "image")
 
     return (
         <div className={full ? "fixed inset-0 z-[60] bg-background p-3" : ""}>
@@ -316,9 +319,9 @@ export function EditorTool() {
                     <button className="icon-btn" title="Desfazer (Ctrl+Z)" onClick={undo}><Undo2 className="size-4" /></button>
                     <button className="icon-btn" title="Refazer (Ctrl+Shift+Z)" onClick={redo}><Redo2 className="size-4" /></button>
                     <div className="mx-1 h-5 w-px bg-foreground/15" />
-                    <button className="icon-btn" title="Diminuir zoom" onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.1).toFixed(2)))}><ZoomOut className="size-4" /></button>
-                    <button className="text-xs font-semibold tabular-nums" style={{ minWidth: 42 }} onClick={() => setZoom(1)} title="Resetar zoom">{Math.round(scale * 100)}%</button>
-                    <button className="icon-btn" title="Aumentar zoom" onClick={() => setZoom((z) => Math.min(3, +(z + 0.1).toFixed(2)))}><ZoomIn className="size-4" /></button>
+                    <button className="icon-btn" title="Diminuir zoom" onClick={() => setZoom((z) => Math.max(0.2, +(z - 0.2).toFixed(2)))}><ZoomOut className="size-4" /></button>
+                    <button className="text-xs font-semibold tabular-nums" style={{ minWidth: 42 }} onClick={() => setZoom(1)} title="Resetar zoom (ajustar à tela)">{Math.round(scale * 100)}%</button>
+                    <button className="icon-btn" title="Aumentar zoom" onClick={() => setZoom((z) => Math.min(8, +(z + 0.2).toFixed(2)))}><ZoomIn className="size-4" /></button>
                     <div className="ml-auto flex items-center gap-1.5">
                         <span className="app-faint mr-1 hidden text-xs sm:inline">{elements.length} itens{selected.length ? ` • ${selected.length} sel.` : ""}</span>
                         <div className="relative">
@@ -342,20 +345,20 @@ export function EditorTool() {
                 {/* toolbar do elemento */}
                 {selEls.length ? (
                     <div className="dashboard-shell shrink-0"><div className="dashboard-inner flex flex-wrap items-center gap-2 p-2.5">
-                        {isText ? <select value={one!.fontFamily || "Inter"} onChange={(e) => patchSel({ fontFamily: e.target.value })} className="app-input h-8 text-xs" style={{ minWidth: 150, fontFamily: `'${one!.fontFamily}',sans-serif` }}>{ALL_FONTS.map((f) => <option key={f} value={f} style={{ fontFamily: `'${f}',sans-serif` }}>{f}</option>)}</select> : null}
-                        {one && one.type !== "rect" && one.type !== "image" ? (<>
-                            <button className="icon-btn" title="Menor" onClick={() => patchSel({ fontSize: Math.max(2, +((one!.fontSize) - 1).toFixed(1)) })}><Minus className="size-4" /></button>
-                            <span className="min-w-[40px] text-center text-sm font-semibold">{Math.round(one!.fontSize)}</span>
-                            <button className="icon-btn" title="Maior" onClick={() => patchSel({ fontSize: +((one!.fontSize) + 1).toFixed(1) })}><Plus className="size-4" /></button>
+                        {isText ? <select value={repText?.fontFamily || "Inter"} onChange={(e) => patchSel({ fontFamily: e.target.value })} className="app-input h-8 text-xs" style={{ minWidth: 150, fontFamily: `'${repText?.fontFamily}',sans-serif` }}>{ALL_FONTS.map((f) => <option key={f} value={f} style={{ fontFamily: `'${f}',sans-serif` }}>{f}</option>)}</select> : null}
+                        {sizeRep ? (<>
+                            <button className="icon-btn" title="Menor" onClick={() => patchSel({ fontSize: Math.max(2, +(sizeRep.fontSize - 1).toFixed(1)) })}><Minus className="size-4" /></button>
+                            <span className="min-w-[40px] text-center text-sm font-semibold">{Math.round(sizeRep.fontSize)}</span>
+                            <button className="icon-btn" title="Maior" onClick={() => patchSel({ fontSize: +(sizeRep.fontSize + 1).toFixed(1) })}><Plus className="size-4" /></button>
                         </>) : null}
                         {isText ? (<>
                             <div className="mx-1 h-5 w-px bg-foreground/15" />
-                            <button className="icon-btn" data-active={one!.bold} onClick={() => patchSel({ bold: !one!.bold })}><Bold className="size-4" /></button>
-                            <button className="icon-btn" data-active={one!.italic} onClick={() => patchSel({ italic: !one!.italic })}><Italic className="size-4" /></button>
-                            <button className="icon-btn" data-active={one!.underline} onClick={() => patchSel({ underline: !one!.underline })}><Underline className="size-4" /></button>
-                            <button className="icon-btn" data-active={one!.align === "left"} onClick={() => patchSel({ align: "left" })}><AlignLeft className="size-4" /></button>
-                            <button className="icon-btn" data-active={one!.align === "center"} onClick={() => patchSel({ align: "center" })}><AlignCenter className="size-4" /></button>
-                            <button className="icon-btn" data-active={one!.align === "right"} onClick={() => patchSel({ align: "right" })}><AlignRight className="size-4" /></button>
+                            <button className="icon-btn" data-active={repText?.bold} onClick={() => patchSel({ bold: !repText?.bold })}><Bold className="size-4" /></button>
+                            <button className="icon-btn" data-active={repText?.italic} onClick={() => patchSel({ italic: !repText?.italic })}><Italic className="size-4" /></button>
+                            <button className="icon-btn" data-active={repText?.underline} onClick={() => patchSel({ underline: !repText?.underline })}><Underline className="size-4" /></button>
+                            <button className="icon-btn" data-active={repText?.align === "left"} onClick={() => patchSel({ align: "left" })}><AlignLeft className="size-4" /></button>
+                            <button className="icon-btn" data-active={repText?.align === "center"} onClick={() => patchSel({ align: "center" })}><AlignCenter className="size-4" /></button>
+                            <button className="icon-btn" data-active={repText?.align === "right"} onClick={() => patchSel({ align: "right" })}><AlignRight className="size-4" /></button>
                         </>) : null}
                         <div className="mx-1 h-5 w-px bg-foreground/15" />
                         <label className="flex items-center gap-1.5"><span className="app-faint text-xs">{one && (one.type === "rect") ? "Borda" : "Cor"}</span><input type="color" value={(selEls[0].color) || "#000000"} onChange={(e) => patchSel({ color: e.target.value })} className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0" /></label>
@@ -373,11 +376,11 @@ export function EditorTool() {
                 ) : null}
 
                 {/* canvas */}
-                <div className="dashboard-shell flex-1 min-h-0"><div ref={canvasRef} className="dashboard-inner flex h-full items-center justify-center overflow-auto p-4">
+                <div className="dashboard-shell flex-1 min-h-0"><div ref={canvasRef} className="dashboard-inner flex h-full overflow-auto p-4">
                     <div ref={wrapRef}
                         onPointerDown={() => { setSelected([]); setEditing(null); setMenu(""); setCtx(null) }}
                         onContextMenu={(e) => e.preventDefault()}
-                        style={{ position: "relative", flex: "0 0 auto", width: Wpx, height: Hpx, background: pageBg, boxShadow: "0 4px 24px rgba(0,0,0,.2)", borderRadius: 4, backgroundImage: bg && showBg ? `url(${bg})` : undefined, backgroundSize: "100% 100%", backgroundRepeat: "no-repeat" }}
+                        style={{ position: "relative", flex: "0 0 auto", margin: "auto", width: Wpx, height: Hpx, background: pageBg, boxShadow: "0 4px 24px rgba(0,0,0,.2)", borderRadius: 4, backgroundImage: bg && showBg ? `url(${bg})` : undefined, backgroundSize: "100% 100%", backgroundRepeat: "no-repeat" }}
                     >
                         {guide.x != null ? <div style={{ position: "absolute", left: guide.x * scale, top: 0, width: 1, height: Hpx, background: "#ec4899", zIndex: 99 }} /> : null}
                         {guide.y != null ? <div style={{ position: "absolute", top: guide.y * scale, left: 0, height: 1, width: Wpx, background: "#ec4899", zIndex: 99 }} /> : null}
