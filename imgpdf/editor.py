@@ -133,12 +133,23 @@ def extract_elements(pdf_bytes: bytes, render_bg: bool = False) -> dict:
                 "color": f"#{r:02x}{g:02x}{b:02x}",
                 "align": "left",
             })
+    page_bg = "#ffffff"
+    try:
+        from collections import Counter
+        sp = page.get_pixmap(dpi=36)
+        pts = [(1, 1), (sp.width - 2, 1), (1, sp.height - 2), (sp.width - 2, sp.height - 2), (sp.width // 2, 2)]
+        cols = [tuple(sp.pixel(x, y)[:3]) for (x, y) in pts]
+        r, g, b = Counter(cols).most_common(1)[0][0]
+        page_bg = f"#{r:02x}{g:02x}{b:02x}"
+    except Exception:
+        pass
+
     bg = None
     if render_bg:
         pix = page.get_pixmap(dpi=120)
         bg = "data:image/png;base64," + base64.b64encode(pix.tobytes("png")).decode("ascii")
     doc.close()
-    return {"page": {"w": round(pw, 1), "h": round(ph, 1)}, "elements": elements, "bg": bg}
+    return {"page": {"w": round(pw, 1), "h": round(ph, 1)}, "elements": elements, "bg": bg, "page_bg": page_bg}
 
 
 def build_pdf(payload: dict, out_path: str | Path | None = None) -> bytes | None:

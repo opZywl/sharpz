@@ -118,11 +118,12 @@ export function EditorTool() {
     useEffect(() => {
         function measure() {
             const w = wrapRef.current?.clientWidth ?? 700
-            setFit(Math.min(1.4, Math.max(0.3, (w - 24) / page.w)))
+            const targetH = (full ? 0.82 : 0.64) * window.innerHeight
+            setFit(Math.min(1.4, Math.max(0.25, Math.min((w - 24) / page.w, targetH / page.h))))
         }
         measure(); window.addEventListener("resize", measure)
         return () => window.removeEventListener("resize", measure)
-    }, [page.w, full])
+    }, [page.w, page.h, full])
 
     const selEls = elements.filter((e) => selected.includes(e.id))
     const one = selEls.length === 1 ? selEls[0] : null
@@ -245,7 +246,7 @@ export function EditorTool() {
             const d = await importDoc(file, true)
             history.current = []; future.current = []
             setPage(d.page); setElements((d.elements.length ? d.elements : SEED).map(norm))
-            setBg(d.bg); setShowBg(Boolean(d.bg)); setSelected([])
+            setBg(d.bg); setShowBg(false); setPageBg(d.page_bg || "#ffffff"); setZoom(1); setSelected([])
         } catch (err) { setError(err instanceof Error ? err.message : "Falha ao importar.") } finally { setBusy(false) }
     }
 
@@ -299,11 +300,11 @@ export function EditorTool() {
                     <Button variant="outline" size="sm" onClick={addText}><Type className="size-4" /> Texto</Button>
                     <div className="relative">
                         <Button variant="outline" size="sm" onClick={() => setMenu(menu === "icon" ? "" : "icon")}><Shapes className="size-4" /> Ícone</Button>
-                        {menu === "icon" ? <div className="select-menu absolute z-30 mt-1 grid grid-cols-5 gap-1 p-2" style={{ width: 210 }}>{Object.keys(ICONS).map((n) => <button key={n} className="icon-btn" title={n} onClick={() => addIcon(n)} dangerouslySetInnerHTML={{ __html: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>` }} />)}</div> : null}
+                        {menu === "icon" ? <div className="pop grid grid-cols-5 gap-1 p-2" style={{ top: "calc(100% + 6px)", left: 0, width: 220 }}>{Object.keys(ICONS).map((n) => <button key={n} className="icon-btn" title={n} onClick={() => addIcon(n)} dangerouslySetInnerHTML={{ __html: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>` }} />)}</div> : null}
                     </div>
                     <div className="relative">
                         <Button variant="outline" size="sm" onClick={() => setMenu(menu === "shape" ? "" : "shape")}><Square className="size-4" /> Forma</Button>
-                        {menu === "shape" ? <div className="select-menu absolute z-30 mt-1 flex gap-1 p-2"><button className="icon-btn" title="Retângulo" onClick={addRect}><Square className="size-4" /></button><button className="icon-btn" title="Linha" onClick={addLine}><Slash className="size-4" /></button></div> : null}
+                        {menu === "shape" ? <div className="pop flex gap-1 p-2" style={{ top: "calc(100% + 6px)", left: 0 }}><button className="icon-btn" title="Retângulo" onClick={addRect}><Square className="size-4" /></button><button className="icon-btn" title="Linha" onClick={addLine}><Slash className="size-4" /></button></div> : null}
                     </div>
                     <Button variant="outline" size="sm" onClick={() => imgRef.current?.click()}><ImageIcon className="size-4" /> Imagem</Button>
                     <div className="mx-1 h-5 w-px bg-foreground/15" />
@@ -319,7 +320,7 @@ export function EditorTool() {
                         <button className="icon-btn" title={full ? "Sair da tela cheia" : "Tela cheia"} onClick={() => setFull((f) => !f)}>{full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}</button>
                         <div className="relative">
                             <Button size="sm" onClick={() => setMenu(menu === "export" ? "" : "export")} disabled={busy}>{busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} Baixar <ChevronDown className="size-3" /></Button>
-                            {menu === "export" ? <div className="select-menu absolute right-0 z-30 mt-1 flex flex-col gap-1 p-1.5" style={{ width: 150 }}><button className="select-option" onClick={() => exportAs("pdf")}><FileText className="size-4" /> PDF</button><button className="select-option" onClick={() => exportAs("png")}><FileImage className="size-4" /> PNG</button></div> : null}
+                            {menu === "export" ? <div className="pop flex flex-col gap-1 p-1.5" style={{ top: "calc(100% + 6px)", right: 0, width: 150 }}><button className="select-option" onClick={() => exportAs("pdf")}><FileText className="size-4" /> PDF</button><button className="select-option" onClick={() => exportAs("png")}><FileImage className="size-4" /> PNG</button></div> : null}
                         </div>
                     </div>
                 </div></div>
@@ -412,7 +413,7 @@ export function EditorTool() {
                         })}
 
                         {ctx ? (
-                            <div className="select-menu absolute z-[101] flex flex-col gap-1 p-1.5" style={{ left: ctx.sx, top: ctx.sy, width: 168 }} onPointerDown={(e) => e.stopPropagation()}>
+                            <div className="pop flex flex-col gap-1 p-1.5" style={{ left: ctx.sx, top: ctx.sy, width: 168, zIndex: 101 }} onPointerDown={(e) => e.stopPropagation()}>
                                 <button className="select-option" onClick={() => { dupSel(); setCtx(null) }}><Copy className="size-4" /> Duplicar</button>
                                 <button className="select-option" onClick={() => { zorder(true); setCtx(null) }}><BringToFront className="size-4" /> Trazer p/ frente</button>
                                 <button className="select-option" onClick={() => { zorder(false); setCtx(null) }}><SendToBack className="size-4" /> Enviar p/ trás</button>

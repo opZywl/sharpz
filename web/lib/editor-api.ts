@@ -33,6 +33,7 @@ export interface EditorDoc {
     page: EditorPage
     elements: EditorElement[]
     bg: string | null
+    page_bg?: string
 }
 
 const BASE = "/api/editor"
