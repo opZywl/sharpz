@@ -117,4 +117,4 @@ As dependências Python são instaladas com o `constraints.txt`, que trava as ve
 
 ---
 
-[← Solução de problemas](solucao-de-problemas.md) · [Voltar ao início](../../README.pt-BR.md)
+[← Solução de problemas](solucao-de-problemas.md) · [Licenças de terceiros →](licencas-de-terceiros.md)

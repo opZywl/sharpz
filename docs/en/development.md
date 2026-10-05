@@ -117,4 +117,4 @@ Python dependencies are installed with `constraints.txt`, which pins the tested 
 
 ---
 
-[← Troubleshooting](troubleshooting.md) · [Back to start](../../README.md)
+[← Troubleshooting](troubleshooting.md) · [Third-party licenses →](third-party-licenses.md)

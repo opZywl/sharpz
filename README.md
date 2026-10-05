@@ -46,6 +46,7 @@ The full walkthrough is in [Installation and usage](docs/en/installation.md).
 | [Command line](docs/en/command-line.md) | How to use the tools without opening the dashboard. |
 | [Troubleshooting](docs/en/troubleshooting.md) | Common errors and how to fix each one. |
 | [Development](docs/en/development.md) | Project structure, API routes, tests and continuous integration. |
+| [Third-party licenses](docs/en/third-party-licenses.md) | Licenses of the models, packages and tools Sharpz uses. |
 
 ## Contributing
 
@@ -55,4 +56,4 @@ Bugs, ideas and pull requests are welcome. See [how to contribute](CONTRIBUTING.
 
 The code is open source, under the [MIT license](LICENSE).
 
-Some dependencies have their own licenses. PyMuPDF, used in Image to PDF and in the PDF editor, is AGPL-3.0, and the background removal and transcription AI models follow their authors' licenses.
+Some dependencies have their own licenses. PyMuPDF, used in Image to PDF and in the PDF editor, is AGPL-3.0, and the background removal and transcription AI models follow their authors' licenses. See the [third-party licenses](docs/en/third-party-licenses.md).

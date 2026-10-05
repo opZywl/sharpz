@@ -46,6 +46,7 @@ O passo a passo completo está em [Instalação e uso](docs/pt-BR/instalacao.md)
 | [Linha de comando](docs/pt-BR/linha-de-comando.md) | Como usar as ferramentas sem abrir o painel. |
 | [Solução de problemas](docs/pt-BR/solucao-de-problemas.md) | Erros comuns e como resolver cada um. |
 | [Desenvolvimento](docs/pt-BR/desenvolvimento.md) | Estrutura do projeto, rotas da API, testes e integração contínua. |
+| [Licenças de terceiros](docs/pt-BR/licencas-de-terceiros.md) | Licenças dos modelos, pacotes e ferramentas que o Sharpz usa. |
 
 ## Contribuindo
 
@@ -55,4 +56,4 @@ Bugs, ideias e pull requests são bem-vindos. Veja [como contribuir](docs/pt-BR/
 
 O código é aberto, sob a [licença MIT](LICENSE).
 
-Algumas dependências têm licença própria. O PyMuPDF, usado no Imagem para PDF e no Editor de PDF, é AGPL-3.0, e os modelos de IA de remoção de fundo e de transcrição seguem as licenças dos seus autores.
+Algumas dependências têm licença própria. O PyMuPDF, usado no Imagem para PDF e no Editor de PDF, é AGPL-3.0, e os modelos de IA de remoção de fundo e de transcrição seguem as licenças dos seus autores. Veja as [licenças de terceiros](docs/pt-BR/licencas-de-terceiros.md).
