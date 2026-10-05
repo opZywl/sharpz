@@ -74,11 +74,14 @@ from packages import (
 )
 from transcribe.jobs import (
     DEFAULT_MODEL as TRANSCRIBE_DEFAULT_MODEL,
+    DOWNLOADS as TRANSCRIBE_DOWNLOADS,
     STORE as TRANSCRIBE_STORE,
     UPLOAD_DIR as TRANSCRIBE_UPLOAD_DIR,
     VALID_FORMATS as TRANSCRIBE_VALID_FORMATS,
-    VALID_MODELS as TRANSCRIBE_VALID_MODELS,
     model_catalog as transcribe_model_catalog,
+    normalize_model_key as transcribe_model_key,
+    resolve_model as transcribe_resolve_model,
+    save_stream as transcribe_save_stream,
     venv_available as transcribe_venv_available,
     whisperx_available as transcribe_whisperx_available,
 )
@@ -366,6 +369,8 @@ class PortfolioKtxResponse(BaseModel):
 
 class TranscribeJobCreated(BaseModel):
     job_id: str
+    model: str
+    deduped: bool = False
 
 
 class TranscribeModelInfo(BaseModel):
@@ -373,10 +378,26 @@ class TranscribeModelInfo(BaseModel):
     label: str
     downloaded: bool
     is_default: bool
+    english_only: bool = False
+    size_mb: int = 0
+    downloading: bool = False
 
 
 class TranscribeModelsResponse(BaseModel):
     models: list[TranscribeModelInfo]
+    default_resolved: str
+
+
+class TranscribeModelDownloadStarted(BaseModel):
+    ok: bool
+    status: str
+
+
+class TranscribeModelDownloadStatus(BaseModel):
+    status: str
+    downloaded_bytes: int
+    total_bytes: int | None = None
+    error: str | None = None
 
 
 class TranscribeCapabilitiesResponse(BaseModel):
@@ -1094,6 +1115,37 @@ def _parse_formats(formats: str) -> list[str]:
     return valid or ["txt", "srt", "vtt", "json"]
 
 
+def _require_transcribe_job(job_id: str) -> None:
+    if not TRANSCRIBE_STORE.exists(job_id):
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+
+
+def _store_transcribe_upload(file: UploadFile) -> tuple[Path, str, int]:
+    original = Path(file.filename or "").name or "upload"
+    stem = Path(original).stem[:80] or "upload"
+    suffix = Path(original).suffix[:12]
+    target = TRANSCRIBE_UPLOAD_DIR / f"{uuid.uuid4().hex}_{stem}{suffix}"
+    file.file.seek(0)
+    size, digest = transcribe_save_stream(file.file, target)
+    return target, digest, size
+
+
+def _transcribe_model_or_404(key: str) -> str:
+    model_key = transcribe_model_key(key)
+    if model_key is None:
+        raise HTTPException(status_code=404, detail=f"Modelo desconhecido: {key}.")
+    return model_key
+
+
+def _last_event_id(request: Request, since: int | None) -> int:
+    header = (request.headers.get("last-event-id") or "").strip()
+    try:
+        from_header = int(header) if header else 0
+    except ValueError:
+        from_header = 0
+    return max(0, from_header, since or 0)
+
+
 @app.post("/api/transcribe", response_model=TranscribeJobCreated)
 async def transcribe_create(
     file: UploadFile | None = File(None),
@@ -1102,7 +1154,7 @@ async def transcribe_create(
     model: str = Form(TRANSCRIBE_DEFAULT_MODEL),
     language: str = Form("auto"),
     formats: str = Form("txt,srt,vtt,json,lrc"),
-    vad: bool = Form(False),
+    vad: bool = Form(True),
     word_timestamps: bool = Form(False),
     diarize: bool = Form(False),
     translate: bool = Form(False),
@@ -1122,33 +1174,32 @@ async def transcribe_create(
     make_zip: bool = Form(False),
     open_folder: bool = Form(False),
 ) -> TranscribeJobCreated:
-    selected_model = model if model in TRANSCRIBE_VALID_MODELS else TRANSCRIBE_DEFAULT_MODEL
-
+    selected_model = transcribe_resolve_model(model, translate)
     source_url = (url or "").strip()
 
     input_path: str | None = None
+    source_sha1: str | None = None
+    upload_target: Path | None = None
     if file is not None and file.filename:
-        raw = await file.read()
-        if not raw:
-            raise HTTPException(status_code=400, detail="Arquivo enviado esta vazio.")
-        TRANSCRIBE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        safe_name = Path(file.filename).name or "upload"
-        target = TRANSCRIBE_UPLOAD_DIR / f"{uuid.uuid4().hex}_{safe_name}"
-        target.write_bytes(raw)
-        input_path = str(target)
+        upload_target, source_sha1, size = await run_in_threadpool(_store_transcribe_upload, file)
+        if size == 0:
+            upload_target.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail="O arquivo enviado está vazio.")
+        input_path = str(upload_target)
     elif local_path.strip():
-        candidate = Path(local_path.strip()).expanduser()
-        if not candidate.exists():
-            raise HTTPException(status_code=400, detail=f"Caminho local nao encontrado: {candidate}")
+        candidate = Path(local_path.strip().strip('"')).expanduser()
+        if not candidate.is_file():
+            raise HTTPException(status_code=400, detail=f"Arquivo local não encontrado: {candidate}")
         input_path = str(candidate)
     elif source_url:
         input_path = None
     else:
-        raise HTTPException(status_code=400, detail="Envie um arquivo, informe local_path ou uma url.")
+        raise HTTPException(status_code=400, detail="Envie um arquivo, informe um caminho local ou uma URL.")
 
     options = {
         "input_path": input_path,
         "url": source_url or None,
+        "source_sha1": source_sha1,
         "model": selected_model,
         "language": language or "auto",
         "formats": _parse_formats(formats),
@@ -1174,26 +1225,46 @@ async def transcribe_create(
         "make_zip": make_zip,
         "open_folder": open_folder,
     }
-    job_id = TRANSCRIBE_STORE.enqueue(options)
-    return TranscribeJobCreated(job_id=job_id)
+    job_id, deduped = TRANSCRIBE_STORE.enqueue(options)
+    if deduped and upload_target is not None:
+        upload_target.unlink(missing_ok=True)
+    return TranscribeJobCreated(job_id=job_id, model=selected_model, deduped=deduped)
 
 
 @app.get("/api/transcribe/models", response_model=TranscribeModelsResponse)
-async def transcribe_models() -> TranscribeModelsResponse:
+def transcribe_models() -> TranscribeModelsResponse:
     return TranscribeModelsResponse(
-        models=[TranscribeModelInfo(**entry) for entry in transcribe_model_catalog()]
+        models=[TranscribeModelInfo(**entry) for entry in transcribe_model_catalog()],
+        default_resolved=transcribe_resolve_model(TRANSCRIBE_DEFAULT_MODEL),
     )
 
 
+@app.post("/api/transcribe/models/{key}/download", response_model=TranscribeModelDownloadStarted)
+def transcribe_model_download(key: str) -> TranscribeModelDownloadStarted:
+    model_key = _transcribe_model_or_404(key)
+    try:
+        status = TRANSCRIBE_DOWNLOADS.start(model_key)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Não consegui iniciar o download do modelo: {exc}") from exc
+    return TranscribeModelDownloadStarted(ok=True, status=status)
+
+
+@app.get("/api/transcribe/models/{key}/download", response_model=TranscribeModelDownloadStatus)
+def transcribe_model_download_status(key: str) -> TranscribeModelDownloadStatus:
+    return TranscribeModelDownloadStatus(**TRANSCRIBE_DOWNLOADS.status(_transcribe_model_or_404(key)))
+
+
 @app.get("/api/transcribe/capabilities", response_model=TranscribeCapabilitiesResponse)
-async def transcribe_capabilities() -> TranscribeCapabilitiesResponse:
+def transcribe_capabilities() -> TranscribeCapabilitiesResponse:
     whisperx = transcribe_whisperx_available()
     return TranscribeCapabilitiesResponse(
         ffmpeg=shutil.which("ffmpeg") is not None,
         whisperx=whisperx,
         diarization=whisperx,
         venv=transcribe_venv_available(),
-        default_model=TRANSCRIBE_DEFAULT_MODEL,
+        default_model=transcribe_resolve_model(TRANSCRIBE_DEFAULT_MODEL),
     )
 
 
@@ -1201,39 +1272,44 @@ async def transcribe_capabilities() -> TranscribeCapabilitiesResponse:
 async def transcribe_job(job_id: str) -> dict:
     state = TRANSCRIBE_STORE.get(job_id)
     if state is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
     return state
 
 
 @app.get("/api/transcribe/jobs/{job_id}/stream")
-async def transcribe_job_stream(job_id: str) -> StreamingResponse:
-    if TRANSCRIBE_STORE.get(job_id) is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+async def transcribe_job_stream(job_id: str, request: Request, since: int | None = None) -> StreamingResponse:
+    _require_transcribe_job(job_id)
     return StreamingResponse(
-        TRANSCRIBE_STORE.stream(job_id),
+        TRANSCRIBE_STORE.stream(job_id, _last_event_id(request, since)),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/api/transcribe/jobs/{job_id}/cancel")
+def transcribe_job_cancel(job_id: str) -> dict:
+    result = TRANSCRIBE_STORE.cancel(job_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    return result
 
 
 @app.get("/api/transcribe/jobs/{job_id}/download")
 async def transcribe_job_download(job_id: str, format: str) -> FileResponse:
-    if TRANSCRIBE_STORE.get(job_id) is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    _require_transcribe_job(job_id)
     fmt = format.strip().lower()
     path = TRANSCRIBE_STORE.get_file(job_id, fmt)
     if path is None:
-        raise HTTPException(status_code=404, detail=f"Arquivo '{fmt}' indisponivel para este job.")
+        raise HTTPException(status_code=404, detail=f"Arquivo '{fmt}' indisponível para este job.")
     return FileResponse(str(path), filename=path.name, media_type="application/octet-stream")
 
 
 @app.get("/api/transcribe/jobs/{job_id}/audio")
 async def transcribe_job_audio(job_id: str) -> FileResponse:
-    if TRANSCRIBE_STORE.get(job_id) is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    _require_transcribe_job(job_id)
     path = TRANSCRIBE_STORE.get_input_path(job_id)
     if path is None:
-        raise HTTPException(status_code=404, detail="Midia de entrada indisponivel para este job.")
+        raise HTTPException(status_code=404, detail="Mídia de entrada indisponível para este job.")
     media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     return FileResponse(
         str(path),
@@ -1243,13 +1319,12 @@ async def transcribe_job_audio(job_id: str) -> FileResponse:
 
 
 @app.post("/api/transcribe/jobs/{job_id}/summarize", response_model=TranscribeSummarizeResponse)
-async def transcribe_job_summarize(job_id: str, payload: TranscribeSummarizeRequest) -> TranscribeSummarizeResponse:
-    segments = TRANSCRIBE_STORE.get_segments(job_id)
-    if segments is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
-    text = "\n".join((seg.get("text") or "").strip() for seg in segments if (seg.get("text") or "").strip())
+def transcribe_job_summarize(job_id: str, payload: TranscribeSummarizeRequest) -> TranscribeSummarizeResponse:
+    text = TRANSCRIBE_STORE.get_text(job_id)
+    if text is None:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
     if not text.strip():
-        raise HTTPException(status_code=400, detail="Este job ainda nao tem texto transcrito para resumir.")
+        raise HTTPException(status_code=400, detail="Este job ainda não tem texto transcrito para resumir.")
 
     base_url = payload.base_url.strip().rstrip("/")
     if not base_url:
@@ -1262,7 +1337,7 @@ async def transcribe_job_summarize(job_id: str, payload: TranscribeSummarizeRequ
         "messages": [
             {
                 "role": "system",
-                "content": "Voce resume transcricoes em PORTUGUES de forma clara e estruturada (titulo, bullets dos pontos principais, e proximos passos se houver).",
+                "content": "Você resume transcrições em português de forma clara e estruturada (título, tópicos com os pontos principais e próximos passos, se houver).",
             },
             {"role": "user", "content": text},
         ],
@@ -1296,7 +1371,7 @@ async def transcribe_job_summarize(job_id: str, payload: TranscribeSummarizeRequ
     except urllib.error.URLError as exc:
         raise HTTPException(
             status_code=502,
-            detail=f"Nao consegui falar com o LLM em {base_url}. Verifique se o Ollama/endpoint esta rodando. ({exc.reason})",
+            detail=f"Não consegui falar com o LLM em {base_url}. Verifique se o Ollama/endpoint está rodando. ({exc.reason})",
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha ao resumir via LLM em {base_url}: {exc}")
@@ -1311,42 +1386,38 @@ async def transcribe_job_summarize(job_id: str, payload: TranscribeSummarizeRequ
 
 @app.get("/api/transcribe/jobs/{job_id}/complete")
 async def transcribe_job_complete(job_id: str) -> dict:
-    if TRANSCRIBE_STORE.get(job_id) is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    _require_transcribe_job(job_id)
     manifest = TRANSCRIBE_STORE.get_complete_manifest(job_id)
     if manifest is None:
-        raise HTTPException(status_code=404, detail="Este job nao tem pacote Complete.")
+        raise HTTPException(status_code=404, detail="Este job não tem pacote Complete.")
     return manifest
 
 
 @app.get("/api/transcribe/jobs/{job_id}/complete/file")
 async def transcribe_job_complete_file(job_id: str, path: str) -> FileResponse:
-    if TRANSCRIBE_STORE.get(job_id) is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    _require_transcribe_job(job_id)
     resolved = TRANSCRIBE_STORE.get_complete_file(job_id, path)
     if resolved is None:
-        raise HTTPException(status_code=404, detail="Arquivo nao encontrado no pacote.")
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado no pacote.")
     media_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
     return FileResponse(str(resolved), media_type=media_type, content_disposition_type="inline")
 
 
 @app.get("/api/transcribe/jobs/{job_id}/complete/zip")
 async def transcribe_job_complete_zip(job_id: str) -> FileResponse:
-    if TRANSCRIBE_STORE.get(job_id) is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    _require_transcribe_job(job_id)
     zip_path = TRANSCRIBE_STORE.get_zip(job_id)
     if zip_path is None:
-        raise HTTPException(status_code=404, detail="Zip indisponivel para este job.")
+        raise HTTPException(status_code=404, detail="Zip indisponível para este job.")
     return FileResponse(str(zip_path), filename=zip_path.name, media_type="application/zip")
 
 
 @app.post("/api/transcribe/jobs/{job_id}/complete/open-folder")
 async def transcribe_job_complete_open_folder(job_id: str) -> dict:
-    if TRANSCRIBE_STORE.get(job_id) is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+    _require_transcribe_job(job_id)
     ok = TRANSCRIBE_STORE.open_complete_folder(job_id)
     if not ok:
-        raise HTTPException(status_code=400, detail="Nao foi possivel abrir a pasta neste ambiente.")
+        raise HTTPException(status_code=400, detail="Não foi possível abrir a pasta neste ambiente.")
     return {"ok": True}
 
 

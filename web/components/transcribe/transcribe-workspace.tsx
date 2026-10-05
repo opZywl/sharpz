@@ -1,1300 +1,758 @@
 "use client"
 
 import { motion } from "framer-motion"
-import {
-    Archive,
-    Captions,
-    Check,
-    ChevronDown,
-    Clipboard,
-    ClipboardCheck,
-    Download,
-    FileText,
-    FolderOpen,
-    Images,
-    Loader2,
-    Mic,
-    Play,
-    Settings2,
-    Sparkles,
-    Square,
-    Users,
-    Wand2,
-} from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { AudioLines, ChevronDown, Loader2, Mic, Play, RotateCcw, Settings2, Square, TriangleAlert, Upload } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
+import { CheckboxRow, Panel, SelectField, TextField, cardEnter } from "@/components/dashboard/primitives"
+import {
+    CompleteModeFields,
+    appendCompleteFields,
+    useCompleteSettings,
+    type CompleteSettings,
+} from "@/components/transcribe/complete-mode-fields"
+import { CompletePackagePanel } from "@/components/transcribe/complete-package-panel"
+import { MediaDropzone, type DropzoneSource } from "@/components/transcribe/media-dropzone"
+import { ModelDownload } from "@/components/transcribe/model-download"
+import { SummaryPanel } from "@/components/transcribe/summary-panel"
+import { useLatest, useMicRecorder, usePersistentState } from "@/components/transcribe/transcribe-hooks"
+import { TranscribeProgress } from "@/components/transcribe/transcribe-progress"
+import {
+    FAST_MODEL,
+    FORMAT_OPTIONS,
+    LANGUAGE_OPTIONS,
+    MEDIA_HINT,
+    MODEL_FALLBACK,
+    QUALITY_MODEL,
+    baseName,
+    cleanLocalPath,
+    formatClock,
+    isMediaFile,
+    modelLabel,
+    pathTail,
+    readStorageJson,
+    segmentsToText,
+    stringStore,
+    stripPathQuotes,
+    writeStorage,
+    type FormatKey,
+    type Store,
+} from "@/components/transcribe/transcribe-utils"
+import { TranscriptResult } from "@/components/transcribe/transcript-result"
+import { useTranscribeJob } from "@/components/transcribe/use-transcribe-job"
 import { Button } from "@/components/ui/button"
+import { Segmented } from "@/components/ui/segmented"
+import { appendFields, formatBytes } from "@/lib/dashboard-utils"
+import { getCapabilities, getModels, type TranscribeCapabilities, type TranscribeModels } from "@/lib/transcribe-api"
 import { cn } from "@/lib/utils"
-import {
-    audioUrl,
-    completeFileUrl,
-    completeZipUrl,
-    downloadUrl,
-    getCapabilities,
-    getComplete,
-    getModels,
-    openCompleteFolder,
-    openStream,
-    startTranscription,
-    summarize,
-    type CompleteManifest,
-    type TranscribeCapabilities,
-    type TranscribeEvent,
-    type TranscribeModel,
-    type TranscribeSegment,
-} from "@/lib/transcribe-api"
 
-type Status = "idle" | "running" | "done" | "error"
-
-interface ModelOption {
-    value: string
-    label: string
+interface TranscribeOptions {
+    language: string
+    model: string
+    diarize: boolean
+    wordTimestamps: boolean
+    vad: boolean
+    translate: boolean
+    formats: Record<FormatKey, boolean>
+    autoStart: boolean
+    moreOpen: boolean
 }
 
-interface LanguageOption {
-    value: string
-    label: string
+type SourceKind = "file" | "path" | "url"
+type Source = { kind: "file"; file: File } | { kind: "path"; path: string } | { kind: "url"; url: string }
+type Mode = "fast" | "quality" | "custom"
+
+interface FormMessage {
+    tone: "error" | "info"
+    text: string
 }
 
-const cardEnter = {
-    initial: { opacity: 0, y: 14 },
-    animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const },
+const AUTO_MODEL = "auto"
+const KNOWN_MODELS = new Set([AUTO_MODEL, ...MODEL_FALLBACK.map((entry) => entry.key)])
+const BUSY_MESSAGE = "Já tem uma transcrição em andamento. O arquivo ficou pronto: clique em Transcrever quando ela terminar."
+const READY_MESSAGE = "A transcrição anterior terminou. O arquivo novo está pronto: clique em Transcrever."
+
+const DEFAULT_OPTIONS: TranscribeOptions = {
+    language: "pt",
+    model: AUTO_MODEL,
+    diarize: false,
+    wordTimestamps: false,
+    vad: true,
+    translate: false,
+    formats: { txt: true, srt: true, vtt: false, json: false, lrc: false },
+    autoStart: true,
+    moreOpen: false,
 }
 
-const DEFAULT_MODEL = "large-v3"
-const HF_TOKEN_KEY = "cleanup-image.hf-token"
-const LLM_BASE_URL_KEY = "cleanup-image.llm-base-url"
-const LLM_MODEL_KEY = "cleanup-image.llm-model"
-const LLM_API_KEY_KEY = "cleanup-image.llm-api-key"
-const DEFAULT_LLM_BASE_URL = "http://localhost:11434/v1"
-const DEFAULT_LLM_MODEL = "llama3.1"
-const VISION_BASE_URL_KEY = "cleanup-image.vision-base-url"
-const VISION_MODEL_KEY = "cleanup-image.vision-model"
-const VISION_API_KEY_KEY = "cleanup-image.vision-api-key"
-const OUTPUT_DIR_KEY = "cleanup-image.complete-output-dir"
-const DEFAULT_VISION_BASE_URL = "http://localhost:11434/v1"
-const DEFAULT_VISION_MODEL = "llama3.2-vision"
-
-const MEDIA_ACCEPT = ".mp4,.mkv,.mov,.webm,.mp3,.wav,.m4a,video/*,audio/*"
-
-const baseModels: Array<{ key: string; label: string }> = [
-    { key: "tiny", label: "Tiny" },
-    { key: "base", label: "Base" },
-    { key: "small", label: "Small" },
-    { key: "medium", label: "Medium" },
-    { key: "large-v2", label: "Large v2" },
-    { key: "large-v3", label: "Large v3" },
-    { key: "large-v3-turbo", label: "Large v3 Turbo" },
-    { key: "distil-large-v3", label: "Distil Large v3" },
-]
-
-const languageOptions: LanguageOption[] = [
-    { value: "auto", label: "Detectar (auto)" },
-    { value: "pt", label: "Portugues" },
-    { value: "en", label: "Ingles" },
-    { value: "es", label: "Espanhol" },
-    { value: "fr", label: "Frances" },
-    { value: "de", label: "Alemao" },
-    { value: "it", label: "Italiano" },
-]
-
-const formatLabels: Array<{ key: string; label: string }> = [
-    { key: "txt", label: "TXT" },
-    { key: "srt", label: "SRT" },
-    { key: "vtt", label: "VTT" },
-    { key: "json", label: "JSON" },
-    { key: "lrc", label: "LRC" },
-]
-
-function formatBytes(bytes: number) {
-    if (!bytes) return "0 KB"
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+function pickBoolean(value: unknown, fallback: boolean) {
+    return typeof value === "boolean" ? value : fallback
 }
 
-function formatTimecode(seconds: number) {
-    if (!Number.isFinite(seconds) || seconds < 0) return "00:00"
-    const total = Math.floor(seconds)
-    const minutes = Math.floor(total / 60)
-    const secs = total % 60
-    return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+function sanitizeOptions(raw: unknown): TranscribeOptions | null {
+    if (!raw || typeof raw !== "object") return null
+    const value = raw as Record<string, unknown>
+    const savedFormats = value.formats && typeof value.formats === "object" ? (value.formats as Record<string, unknown>) : {}
+    const formats = Object.fromEntries(
+        FORMAT_OPTIONS.map(({ key }) => [key, key === "txt" || pickBoolean(savedFormats[key], DEFAULT_OPTIONS.formats[key])]),
+    ) as Record<FormatKey, boolean>
+    const language = typeof value.language === "string" ? value.language : ""
+    const model = typeof value.model === "string" ? value.model : ""
+    return {
+        language: LANGUAGE_OPTIONS.some((option) => option.value === language) ? language : DEFAULT_OPTIONS.language,
+        model: KNOWN_MODELS.has(model) ? model : DEFAULT_OPTIONS.model,
+        diarize: pickBoolean(value.diarize, DEFAULT_OPTIONS.diarize),
+        wordTimestamps: pickBoolean(value.wordTimestamps, DEFAULT_OPTIONS.wordTimestamps),
+        vad: pickBoolean(value.vad, DEFAULT_OPTIONS.vad),
+        translate: pickBoolean(value.translate, DEFAULT_OPTIONS.translate),
+        formats,
+        autoStart: pickBoolean(value.autoStart, DEFAULT_OPTIONS.autoStart),
+        moreOpen: pickBoolean(value.moreOpen, DEFAULT_OPTIONS.moreOpen),
+    }
 }
 
-function DashboardShell({
-    children,
-    className,
-    innerClassName,
-}: {
-    children: React.ReactNode
-    className?: string
-    innerClassName?: string
-}) {
+const optionsStore: Store<TranscribeOptions> = {
+    load: () => sanitizeOptions(readStorageJson("sharpz.transcribe.options.v1")),
+    save: (value) => writeStorage("sharpz.transcribe.options.v1", JSON.stringify(value)),
+}
+
+const hfTokenStore = stringStore("cleanup-image.hf-token")
+
+function sourceName(source: Source) {
+    if (source.kind === "file") return source.file.name
+    if (source.kind === "path") return pathTail(source.path)
+    return "transcricao"
+}
+
+function sourceKey(source: Source | null) {
+    if (!source) return ""
+    if (source.kind === "file") return `file:${source.file.name}:${source.file.size}:${source.file.lastModified}`
+    return source.kind === "path" ? `path:${source.path}` : `url:${source.url}`
+}
+
+function describeSource(source: Source | null): DropzoneSource | null {
+    if (!source) return null
+    if (source.kind === "file") return { kind: "file", title: source.file.name, subtitle: formatBytes(source.file.size) }
+    if (source.kind === "path") return { kind: "path", title: pathTail(source.path), subtitle: `Caminho no computador: ${source.path}` }
+    return { kind: "url", title: source.url, subtitle: "Link da internet: o áudio é baixado antes de transcrever." }
+}
+
+function OptionGroup({ title, children }: { title: string; children: React.ReactNode }) {
     return (
-        <div className={cn("dashboard-shell", className)}>
-            <div className={cn("dashboard-inner", innerClassName)}>
-                <div className="dashboard-dot-layer" />
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-foreground/10 to-transparent" />
-                <div className="relative z-10">{children}</div>
-            </div>
-        </div>
-    )
-}
-
-function Panel({
-    title,
-    subtitle,
-    icon: Icon,
-    children,
-    className,
-}: {
-    title: string
-    subtitle?: string
-    icon?: typeof Captions
-    children: React.ReactNode
-    className?: string
-}) {
-    return (
-        <DashboardShell className={className} innerClassName="p-4 sm:p-5">
-            <div className="mb-4 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                        {Icon ? (
-                            <span className="panel-icon size-8 shrink-0 rounded-lg">
-                                <Icon className="size-4" />
-                            </span>
-                        ) : null}
-                        <h2 className="font-jakarta text-lg font-extrabold uppercase leading-none tracking-tight">
-                            {title}
-                        </h2>
-                    </div>
-                    {subtitle ? <p className="app-muted mt-2 text-sm leading-5">{subtitle}</p> : null}
-                </div>
-            </div>
+        <section className="grid gap-3">
+            <span className="field-label">{title}</span>
             {children}
-        </DashboardShell>
+        </section>
     )
 }
 
-function SelectField<T extends string>({
-    label,
-    value,
-    options,
-    onChange,
-    className,
-}: {
-    label: string
-    value: T
-    options: Array<{ value: T; label: string }>
-    onChange: (value: T) => void
-    className?: string
-}) {
-    const [open, setOpen] = useState(false)
-    const current = options.find((option) => option.value === value) ?? options[0]
-
+function CapabilityPill({ label, ok }: { label: string; ok: boolean }) {
     return (
-        <div
-            className={cn("relative flex min-w-0 flex-col gap-2", className)}
-            onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                    setOpen(false)
-                }
-            }}
-        >
-            <span className="field-label">{label}</span>
-            <button
-                type="button"
-                className="field-control flex w-full min-w-0 items-center justify-between gap-3 px-3 text-left text-xs font-bold uppercase tracking-[0.12em]"
-                onClick={() => setOpen((next) => !next)}
-                aria-haspopup="listbox"
-                aria-expanded={open}
-            >
-                <span className="min-w-0 truncate">{current?.label ?? value}</span>
-                <ChevronDown className={cn("size-4 shrink-0 transition-transform", open && "rotate-180")} />
-            </button>
-            {open ? (
-                <div className="select-menu" role="listbox">
-                    {options.map((option) => {
-                        const selected = option.value === value
-                        return (
-                            <button
-                                key={option.value}
-                                type="button"
-                                role="option"
-                                aria-selected={selected}
-                                data-active={selected}
-                                className="select-option"
-                                onClick={() => {
-                                    onChange(option.value)
-                                    setOpen(false)
-                                }}
-                            >
-                                <span className="min-w-0 truncate">{option.label}</span>
-                                {selected ? <Check className="size-3.5 shrink-0" /> : null}
-                            </button>
-                        )
-                    })}
-                </div>
-            ) : null}
-        </div>
-    )
-}
-
-function TextField({
-    label,
-    value,
-    onChange,
-    placeholder,
-    type = "text",
-}: {
-    label: string
-    value: string
-    onChange: (value: string) => void
-    placeholder?: string
-    type?: string
-}) {
-    return (
-        <label className="flex min-w-0 flex-col gap-2">
-            <span className="field-label">{label}</span>
-            <input
-                type={type}
-                value={value}
-                onChange={(event) => onChange(event.target.value)}
-                placeholder={placeholder}
-                className="app-input text-sm"
-            />
-        </label>
-    )
-}
-
-function CheckboxRow({
-    checked,
-    onChange,
-    label,
-    helper,
-}: {
-    checked: boolean
-    onChange: (checked: boolean) => void
-    label: string
-    helper?: string
-}) {
-    return (
-        <label className="checkbox-row flex cursor-pointer items-center gap-3 transition-colors">
-            <input
-                type="checkbox"
-                checked={checked}
-                onChange={(event) => onChange(event.target.checked)}
-                className="size-4 rounded accent-foreground"
-            />
-            <span className="min-w-0">
-                <span className="block text-sm font-semibold">{label}</span>
-                {helper ? <span className="app-faint block text-xs">{helper}</span> : null}
+        <span className="status-card inline-flex items-center gap-2 rounded-xl px-3 py-2">
+            <span className="app-faint text-xs font-semibold uppercase tracking-[0.16em]">{label}</span>
+            <span className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]" data-tone={ok ? "good" : "bad"}>
+                {ok ? "ok" : "faltando"}
             </span>
-        </label>
-    )
-}
-
-function Metric({
-    label,
-    value,
-    helper,
-}: {
-    label: string
-    value: string
-    helper?: string
-}) {
-    return (
-        <div className="metric-tile">
-            <div className="app-faint text-[10px] font-semibold uppercase tracking-[0.2em]">{label}</div>
-            <div className="mt-1 font-jakarta text-xl font-extrabold leading-none">{value}</div>
-            {helper ? <div className="app-faint mt-1 truncate text-xs">{helper}</div> : null}
-        </div>
-    )
-}
-
-function EmptyState({ text }: { text: string }) {
-    return (
-        <div className="empty-state px-4 py-10 text-center">
-            <Captions className="app-faint mx-auto size-8" />
-            <p className="app-muted mt-3 text-sm">{text}</p>
-        </div>
-    )
-}
-
-function MediaField({
-    file,
-    onChange,
-    label,
-    helper,
-}: {
-    file: File | null
-    onChange: (file: File | null) => void
-    label: string
-    helper: string
-}) {
-    return (
-        <div className="dropzone-shell rounded-xl p-4">
-            <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg px-4 py-8 text-center">
-                <input
-                    type="file"
-                    accept={MEDIA_ACCEPT}
-                    className="hidden"
-                    onChange={(event) => onChange(event.target.files?.[0] ?? null)}
-                />
-                <span className="dropzone-icon grid size-12 place-items-center rounded-full">
-                    <Archive className="size-5" />
-                </span>
-                <span>
-                    <span className="block text-sm font-semibold">{file?.name ?? label}</span>
-                    <span className="app-faint mt-1 block text-xs">{file ? formatBytes(file.size) : helper}</span>
-                </span>
-            </label>
-            {file ? (
-                <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => onChange(null)}>
-                    Limpar arquivo
-                </Button>
-            ) : null}
-        </div>
+        </span>
     )
 }
 
 export function TranscribeWorkspace() {
-    const [models, setModels] = useState<TranscribeModel[]>([])
+    const job = useTranscribeJob()
+    const { state, busy } = job
+    const [options, setOptions] = usePersistentState(DEFAULT_OPTIONS, optionsStore)
+    const [hfToken, setHfToken] = usePersistentState("", hfTokenStore)
+    const [complete, setComplete] = useCompleteSettings()
+    const [catalog, setCatalog] = useState<TranscribeModels | null>(null)
     const [capabilities, setCapabilities] = useState<TranscribeCapabilities | null>(null)
-
     const [file, setFile] = useState<File | null>(null)
     const [localPath, setLocalPath] = useState("")
     const [url, setUrl] = useState("")
-
-    const [recording, setRecording] = useState(false)
-    const [recordSeconds, setRecordSeconds] = useState(0)
-
-    const [model, setModel] = useState(DEFAULT_MODEL)
-    const [language, setLanguage] = useState("auto")
-    const [diarize, setDiarize] = useState(false)
-    const [wordTimestamps, setWordTimestamps] = useState(false)
-    const [vad, setVad] = useState(true)
-    const [translate, setTranslate] = useState(false)
+    const [sourceKind, setSourceKind] = useState<SourceKind>("file")
     const [minSpeakers, setMinSpeakers] = useState("")
     const [maxSpeakers, setMaxSpeakers] = useState("")
-    const [hfToken, setHfToken] = useState("")
-    const [formats, setFormats] = useState<Record<string, boolean>>({
-        txt: true,
-        srt: true,
-        vtt: false,
-        json: false,
-        lrc: false,
-    })
+    const [message, setMessage] = useState<FormMessage | null>(null)
+    const [dragging, setDragging] = useState(false)
+    const [startedKey, setStartedKey] = useState("")
 
-    const [status, setStatus] = useState<Status>("idle")
-    const [pct, setPct] = useState(0)
-    const [stage, setStage] = useState<string>("")
-    const [segments, setSegments] = useState<TranscribeSegment[]>([])
-    const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null)
-    const [duration, setDuration] = useState<number | null>(null)
-    const [elapsed, setElapsed] = useState<number | null>(null)
-    const [degraded, setDegraded] = useState<string[]>([])
-    const [resultFiles, setResultFiles] = useState<Record<string, string>>({})
-    const [error, setError] = useState<string | null>(null)
-    const [copied, setCopied] = useState(false)
-    const [jobId, setJobId] = useState<string | null>(null)
+    const update = useCallback(
+        (patch: Partial<TranscribeOptions>) => setOptions((current) => ({ ...current, ...patch })),
+        [setOptions],
+    )
+    const updateComplete = useCallback(
+        (patch: Partial<CompleteSettings>) => setComplete((current) => ({ ...current, ...patch })),
+        [setComplete],
+    )
 
-    const [llmBaseUrl, setLlmBaseUrl] = useState(DEFAULT_LLM_BASE_URL)
-    const [llmModel, setLlmModel] = useState(DEFAULT_LLM_MODEL)
-    const [llmApiKey, setLlmApiKey] = useState("")
-    const [summaryText, setSummaryText] = useState("")
-    const [summarizing, setSummarizing] = useState(false)
-    const [summaryError, setSummaryError] = useState<string | null>(null)
-
-    const [completeMode, setCompleteMode] = useState(false)
-    const [frameInterval, setFrameInterval] = useState("3")
-    const [sceneThreshold, setSceneThreshold] = useState("0.30")
-    const [genDocs, setGenDocs] = useState(true)
-    const [visionBaseUrl, setVisionBaseUrl] = useState(DEFAULT_VISION_BASE_URL)
-    const [visionModel, setVisionModel] = useState(DEFAULT_VISION_MODEL)
-    const [visionApiKey, setVisionApiKey] = useState("")
-    const [outputDir, setOutputDir] = useState("")
-    const [outputName, setOutputName] = useState("")
-    const [makeZip, setMakeZip] = useState(true)
-    const [openFolderOpt, setOpenFolderOpt] = useState(true)
-    const [completeManifest, setCompleteManifest] = useState<CompleteManifest | null>(null)
-    const [completeLoading, setCompleteLoading] = useState(false)
-    const [openingFolder, setOpeningFolder] = useState(false)
-
-    const [activeSegment, setActiveSegment] = useState<number | null>(null)
-    const [waveReady, setWaveReady] = useState(false)
-    const [waveFailed, setWaveFailed] = useState(false)
-
-    const sourceRef = useRef<EventSource | null>(null)
-    const segmentsEndRef = useRef<HTMLDivElement | null>(null)
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-    const recordChunksRef = useRef<BlobPart[]>([])
-    const recordTimerRef = useRef<number | null>(null)
-    const recordStreamRef = useRef<MediaStream | null>(null)
-    const waveContainerRef = useRef<HTMLDivElement | null>(null)
-    const waveSurferRef = useRef<{ seekTo: (n: number) => void; play: () => void; getDuration: () => number; destroy: () => void } | null>(null)
-    const waveDurationRef = useRef<number>(0)
-    const segmentsRef = useRef<TranscribeSegment[]>([])
+    const refreshModels = useCallback(() => {
+        getModels()
+            .then(setCatalog)
+            .catch(() => undefined)
+    }, [])
 
     useEffect(() => {
         let cancelled = false
-
-        async function load() {
-            try {
-                const [modelsData, capabilitiesData] = await Promise.all([getModels(), getCapabilities()])
-                if (cancelled) return
-                setModels(modelsData)
-                setCapabilities(capabilitiesData)
-                const defaultModel = modelsData.find((entry) => entry.is_default)?.key
-                if (defaultModel) setModel(defaultModel)
-                else if (capabilitiesData.default_model) setModel(capabilitiesData.default_model)
-            } catch {
-                if (!cancelled) {
-                    setModels([])
-                    setCapabilities(null)
-                }
-            }
-        }
-
-        load()
+        getModels()
+            .then((data) => {
+                if (!cancelled) setCatalog(data)
+            })
+            .catch(() => undefined)
+        getCapabilities()
+            .then((data) => {
+                if (!cancelled) setCapabilities(data)
+            })
+            .catch(() => undefined)
         return () => {
             cancelled = true
         }
     }, [])
 
-    useEffect(() => {
-        try {
-            const saved = window.localStorage.getItem(HF_TOKEN_KEY)
-            if (saved) setHfToken(saved)
-        } catch {
-            // ignora indisponibilidade de localStorage
-        }
-    }, [])
+    const models = catalog?.models.length ? catalog.models : MODEL_FALLBACK
+    const findModel = (key: string | null | undefined) => models.find((entry) => entry.key === key) ?? null
+    const effectiveModel = options.translate ? QUALITY_MODEL : options.model
+    const mode: Mode = effectiveModel === AUTO_MODEL ? "fast" : effectiveModel === QUALITY_MODEL ? "quality" : "custom"
+    const resolvedAuto = findModel(catalog?.default_resolved)
+    const selectedModel = findModel(effectiveModel === AUTO_MODEL ? catalog?.default_resolved : effectiveModel)
+    const turbo = catalog?.models.find((entry) => entry.key === FAST_MODEL) ?? null
+    const jobModelName = state.model ? findModel(state.model)?.label ?? state.model : null
 
-    useEffect(() => {
-        try {
-            window.localStorage.setItem(HF_TOKEN_KEY, hfToken)
-        } catch {
-            // ignora indisponibilidade de localStorage
-        }
-    }, [hfToken])
-
-    useEffect(() => {
-        try {
-            const savedBase = window.localStorage.getItem(LLM_BASE_URL_KEY)
-            const savedModel = window.localStorage.getItem(LLM_MODEL_KEY)
-            const savedKey = window.localStorage.getItem(LLM_API_KEY_KEY)
-            if (savedBase) setLlmBaseUrl(savedBase)
-            if (savedModel) setLlmModel(savedModel)
-            if (savedKey) setLlmApiKey(savedKey)
-        } catch {
-            // ignora indisponibilidade de localStorage
-        }
-    }, [])
-
-    useEffect(() => {
-        try {
-            window.localStorage.setItem(LLM_BASE_URL_KEY, llmBaseUrl)
-            window.localStorage.setItem(LLM_MODEL_KEY, llmModel)
-            window.localStorage.setItem(LLM_API_KEY_KEY, llmApiKey)
-        } catch {
-            // ignora indisponibilidade de localStorage
-        }
-    }, [llmBaseUrl, llmModel, llmApiKey])
-
-    useEffect(() => {
-        try {
-            const savedBase = window.localStorage.getItem(VISION_BASE_URL_KEY)
-            const savedModel = window.localStorage.getItem(VISION_MODEL_KEY)
-            const savedKey = window.localStorage.getItem(VISION_API_KEY_KEY)
-            const savedDir = window.localStorage.getItem(OUTPUT_DIR_KEY)
-            if (savedBase) setVisionBaseUrl(savedBase)
-            if (savedModel) setVisionModel(savedModel)
-            if (savedKey) setVisionApiKey(savedKey)
-            if (savedDir) setOutputDir(savedDir)
-        } catch {
-            // ignora indisponibilidade de localStorage
-        }
-    }, [])
-
-    useEffect(() => {
-        try {
-            window.localStorage.setItem(VISION_BASE_URL_KEY, visionBaseUrl)
-            window.localStorage.setItem(VISION_MODEL_KEY, visionModel)
-            window.localStorage.setItem(VISION_API_KEY_KEY, visionApiKey)
-            window.localStorage.setItem(OUTPUT_DIR_KEY, outputDir)
-        } catch {
-            // ignora indisponibilidade de localStorage
-        }
-    }, [visionBaseUrl, visionModel, visionApiKey, outputDir])
-
-    useEffect(() => {
-        return () => {
-            sourceRef.current?.close()
-            if (recordTimerRef.current) window.clearInterval(recordTimerRef.current)
-            recordStreamRef.current?.getTracks().forEach((track) => track.stop())
-            try {
-                waveSurferRef.current?.destroy()
-            } catch {
-                // ignora falha ao destruir wavesurfer
-            }
-        }
-    }, [])
-
-    useEffect(() => {
-        segmentsEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-    }, [segments.length])
-
-    useEffect(() => {
-        segmentsRef.current = segments
-    }, [segments])
-
-    const modelOptions: ModelOption[] = useMemo(() => {
-        const downloadedByKey = new Map(models.map((entry) => [entry.key, entry.downloaded]))
-        return baseModels.map((entry) => ({
-            value: entry.key,
-            label: downloadedByKey.get(entry.key) ? `${entry.label} (baixado)` : entry.label,
-        }))
-    }, [models])
-
-    const selectedFormats = useMemo(
-        () => formatLabels.filter((entry) => formats[entry.key]).map((entry) => entry.key),
-        [formats],
+    const modelOptions = useMemo(
+        () => [
+            { value: AUTO_MODEL, label: resolvedAuto ? `Automático (agora: ${resolvedAuto.label})` : "Automático (Rápido)" },
+            ...models.map((entry) => ({ value: entry.key, label: modelLabel(entry) })),
+        ],
+        [models, resolvedAuto],
     )
 
-    const transcriptText = useMemo(
-        () => segments.map((segment) => segment.text.trim()).filter(Boolean).join("\n"),
-        [segments],
-    )
+    const modeHint = options.translate
+        ? "Traduzir para inglês usa sempre a Máxima qualidade."
+        : mode === "quality"
+          ? "Usa o Large v3: o mais preciso, e o mais lento."
+          : mode === "custom"
+            ? `Usando o modelo escolhido em Mais opções: ${selectedModel?.label ?? options.model}.`
+            : !catalog
+              ? "Usa o modelo mais rápido que estiver baixado."
+              : resolvedAuto?.key === FAST_MODEL
+                ? "Usa o Large v3 Turbo: bem mais rápido e quase igual em qualidade."
+                : `Por enquanto o Rápido usa o ${resolvedAuto?.label ?? "Large v3"}, porque o modelo rápido ainda não foi baixado.`
 
-    function resetJobState() {
-        setStatus("running")
-        setPct(0)
-        setStage("queued")
-        setSegments([])
-        setDetectedLanguage(null)
-        setDuration(null)
-        setElapsed(null)
-        setDegraded([])
-        setResultFiles({})
-        setError(null)
-        setCopied(false)
-        setSummaryText("")
-        setSummaryError(null)
-        setCompleteManifest(null)
-        setCompleteLoading(false)
-        setActiveSegment(null)
-        setWaveReady(false)
-        setWaveFailed(false)
-        try {
-            waveSurferRef.current?.destroy()
-        } catch {
-            // ignora falha ao destruir wavesurfer
+    const modelNotes = [
+        selectedModel && !selectedModel.downloaded && catalog
+            ? "Esse modelo ainda não foi baixado: a primeira transcrição demora mais, porque ele baixa antes."
+            : null,
+        effectiveModel.startsWith("distil") && options.language !== "en" ? "Esse modelo só entende inglês." : null,
+    ].filter(Boolean)
+
+    const cleanPath = cleanLocalPath(localPath)
+    const trimmedUrl = url.trim()
+    const source = useMemo<Source | null>(() => {
+        const candidates: Record<SourceKind, Source | null> = {
+            file: file ? { kind: "file", file } : null,
+            path: cleanPath ? { kind: "path", path: cleanPath } : null,
+            url: trimmedUrl ? { kind: "url", url: trimmedUrl } : null,
         }
-        waveSurferRef.current = null
+        return candidates[sourceKind] ?? candidates.file ?? candidates.path ?? candidates.url
+    }, [file, cleanPath, trimmedUrl, sourceKind])
+
+    function buildForm(next: Source) {
+        const form = new FormData()
+        if (next.kind === "file") form.append("file", next.file)
+        if (next.kind === "path") form.append("local_path", next.path)
+        if (next.kind === "url") form.append("url", next.url)
+        appendFields(form, {
+            model: effectiveModel,
+            language: options.language,
+            formats: FORMAT_OPTIONS.filter(({ key }) => key === "txt" || options.formats[key])
+                .map(({ key }) => key)
+                .join(","),
+            vad: options.vad,
+            word_timestamps: options.wordTimestamps,
+            diarize: options.diarize,
+            translate: options.translate,
+        })
+        if (hfToken.trim()) form.append("hf_token", hfToken.trim())
+        if (options.diarize && minSpeakers.trim()) form.append("min_speakers", minSpeakers.trim())
+        if (options.diarize && maxSpeakers.trim()) form.append("max_speakers", maxSpeakers.trim())
+        appendCompleteFields(form, complete)
+        return form
     }
 
-    function handleEvent(event: TranscribeEvent) {
-        if (event.type === "meta") {
-            if (typeof event.language === "string") setDetectedLanguage(event.language)
-            if (typeof event.duration === "number") setDuration(event.duration)
+    function startWith(next: Source, note: string | null = null) {
+        if (busy) {
+            setMessage({ tone: "info", text: BUSY_MESSAGE })
             return
         }
-        if (event.type === "progress") {
-            if (typeof event.pct === "number") setPct(event.pct)
-            if (typeof event.stage === "string") setStage(event.stage)
-            return
-        }
-        if (event.type === "stage") {
-            if (typeof event.stage === "string") setStage(event.stage)
-            return
-        }
-        if (event.type === "segment") {
-            const segment: TranscribeSegment = {
-                id: typeof event.id === "number" ? event.id : undefined,
-                start: typeof event.start === "number" ? event.start : 0,
-                end: typeof event.end === "number" ? event.end : 0,
-                text: typeof event.text === "string" ? event.text : "",
-                speaker: typeof event.speaker === "string" ? event.speaker : null,
-            }
-            setSegments((current) => [...current, segment])
-            return
-        }
-        if (event.type === "done") {
-            if (event.files && typeof event.files === "object") {
-                setResultFiles(event.files as Record<string, string>)
-            }
-            if (Array.isArray(event.degraded)) setDegraded(event.degraded as string[])
-            if (typeof event.elapsed === "number") setElapsed(event.elapsed)
-            setPct(1)
-            setStage("done")
-            setStatus("done")
-            sourceRef.current?.close()
-            sourceRef.current = null
-            return
-        }
-        if (event.type === "error") {
-            setError(typeof event.message === "string" ? event.message : "Erro durante a transcricao.")
-            setStatus("error")
-            sourceRef.current?.close()
-            sourceRef.current = null
-        }
+        setMessage(note ? { tone: "info", text: note } : null)
+        setStartedKey(sourceKey(next))
+        void job.start(buildForm(next), {
+            sourceName: sourceName(next),
+            mode: complete.enabled ? "complete" : "standard",
+            uploading: next.kind === "file",
+        })
     }
 
-    async function handleTranscribe() {
-        const hasUrl = Boolean(url.trim())
-        if (!file && !localPath.trim() && !hasUrl) {
-            setError("Carregue um arquivo, informe um caminho local ou uma URL (YouTube/web).")
+    function acceptFile(picked: File, count = 1) {
+        if (!isMediaFile(picked)) {
+            setMessage({ tone: "error", text: `“${picked.name}” não é áudio nem vídeo. Escolha um destes: ${MEDIA_HINT}.` })
             return
         }
-        if (!selectedFormats.length) {
-            setError("Selecione ao menos um formato de saida.")
+        if (picked.size === 0) {
+            setMessage({ tone: "error", text: `“${picked.name}” está vazio.` })
             return
         }
-
-        sourceRef.current?.close()
-        sourceRef.current = null
-        resetJobState()
-
-        try {
-            const form = new FormData()
-            if (hasUrl) {
-                form.append("url", url.trim())
-            } else {
-                if (file) form.append("file", file)
-                if (localPath.trim()) form.append("local_path", localPath.trim())
-            }
-            form.append("model", model)
-            form.append("language", language)
-            form.append("formats", selectedFormats.join(","))
-            form.append("vad", String(vad))
-            form.append("word_timestamps", String(wordTimestamps))
-            form.append("diarize", String(diarize))
-            form.append("translate", String(translate))
-            if (hfToken.trim()) form.append("hf_token", hfToken.trim())
-            if (diarize && minSpeakers.trim()) form.append("min_speakers", minSpeakers.trim())
-            if (diarize && maxSpeakers.trim()) form.append("max_speakers", maxSpeakers.trim())
-
-            if (completeMode) {
-                form.append("mode", "complete")
-                form.append("frame_interval", frameInterval.trim() || "3")
-                form.append("scene_threshold", sceneThreshold.trim() || "0.30")
-                form.append("gen_docs", String(genDocs))
-                if (genDocs) {
-                    form.append("vision_base_url", visionBaseUrl.trim())
-                    form.append("vision_model", visionModel.trim())
-                    if (visionApiKey.trim()) form.append("vision_api_key", visionApiKey.trim())
-                }
-                if (outputDir.trim()) form.append("output_dir", outputDir.trim())
-                if (outputName.trim()) form.append("output_name", outputName.trim())
-                form.append("make_zip", String(makeZip))
-                form.append("open_folder", String(openFolderOpt))
-            }
-
-            const { job_id } = await startTranscription(form)
-            setJobId(job_id)
-            sourceRef.current = openStream(job_id, handleEvent)
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Erro inesperado ao iniciar a transcricao.")
-            setStatus("error")
-        }
-    }
-
-    async function handleCopy() {
-        if (!transcriptText) return
-        try {
-            await navigator.clipboard.writeText(transcriptText)
-            setCopied(true)
-            window.setTimeout(() => setCopied(false), 1800)
-        } catch {
-            setError("Nao foi possivel copiar para a area de transferencia.")
-        }
-    }
-
-    async function startRecording() {
-        setError(null)
-        if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-            setError("Gravacao por microfone nao e suportada neste navegador.")
+        setFile(picked)
+        setSourceKind("file")
+        const note = count > 1 ? "Solte um arquivo por vez: usei só o primeiro." : null
+        if (busy) {
+            setMessage({ tone: "info", text: BUSY_MESSAGE })
             return
         }
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-            recordStreamRef.current = stream
-            recordChunksRef.current = []
-            const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" })
-            recorder.ondataavailable = (event) => {
-                if (event.data.size > 0) recordChunksRef.current.push(event.data)
-            }
-            recorder.onstop = () => {
-                const blob = new Blob(recordChunksRef.current, { type: "audio/webm" })
-                const recorded = new File([blob], "gravacao.webm", { type: "audio/webm" })
-                setFile(recorded)
-                setLocalPath("")
-                setUrl("")
-                recordStreamRef.current?.getTracks().forEach((track) => track.stop())
-                recordStreamRef.current = null
-            }
-            mediaRecorderRef.current = recorder
-            recorder.start()
-            setRecording(true)
-            setRecordSeconds(0)
-            recordTimerRef.current = window.setInterval(() => {
-                setRecordSeconds((value) => value + 1)
-            }, 1000)
-        } catch (err) {
-            if (err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError")) {
-                setError("Permissao de microfone negada. Libere o acesso ao microfone para gravar.")
-            } else if (err instanceof DOMException && err.name === "NotFoundError") {
-                setError("Nenhum microfone foi encontrado.")
-            } else {
-                setError("Nao foi possivel iniciar a gravacao do microfone.")
-            }
-        }
+        if (options.autoStart) startWith({ kind: "file", file: picked }, note)
+        else setMessage(note ? { tone: "info", text: note } : null)
     }
 
-    function stopRecording() {
-        if (recordTimerRef.current) {
-            window.clearInterval(recordTimerRef.current)
-            recordTimerRef.current = null
-        }
-        try {
-            mediaRecorderRef.current?.stop()
-        } catch {
-            // ignora falha ao parar o recorder
-        }
-        mediaRecorderRef.current = null
-        setRecording(false)
-    }
+    const acceptFileRef = useLatest(acceptFile)
 
-    async function handleSummarize() {
-        if (!jobId) return
-        setSummarizing(true)
-        setSummaryError(null)
-        setSummaryText("")
-        try {
-            const result = await summarize(jobId, {
-                base_url: llmBaseUrl.trim() || DEFAULT_LLM_BASE_URL,
-                model: llmModel.trim() || DEFAULT_LLM_MODEL,
-                api_key: llmApiKey.trim() || undefined,
-                language: detectedLanguage ?? (language === "auto" ? undefined : language),
-            })
-            setSummaryText(result.summary ?? "")
-        } catch (err) {
-            setSummaryError(err instanceof Error ? err.message : "Erro ao gerar o resumo.")
-        } finally {
-            setSummarizing(false)
-        }
-    }
-
-    const seekToSegment = useCallback(
-        (segment: TranscribeSegment, index: number) => {
-            setActiveSegment(index)
-            const surfer = waveSurferRef.current
-            if (!surfer) return
-            const total = waveDurationRef.current || surfer.getDuration() || 0
-            if (total > 0) {
-                surfer.seekTo(Math.min(1, Math.max(0, segment.start / total)))
-                surfer.play()
-            }
-        },
-        [],
+    const recorder = useMicRecorder(
+        (recorded) => acceptFile(recorded),
+        (text) => setMessage({ tone: "error", text }),
     )
 
     useEffect(() => {
-        if (status !== "done" || !jobId || !waveContainerRef.current) return
-        let disposed = false
-        let instance: { destroy: () => void } | null = null
-
-        async function mount() {
-            try {
-                const mod = await import("wavesurfer.js")
-                if (disposed || !waveContainerRef.current) return
-                const WaveSurfer = mod.default
-                const ws = WaveSurfer.create({
-                    container: waveContainerRef.current,
-                    height: 72,
-                    waveColor: "rgba(120,120,120,0.45)",
-                    progressColor: "rgba(20,20,20,0.85)",
-                    cursorColor: "rgba(20,20,20,0.85)",
-                    barWidth: 2,
-                    barGap: 1,
-                    barRadius: 2,
-                    url: audioUrl(jobId as string),
-                })
-                instance = ws
-                waveSurferRef.current = ws as unknown as typeof waveSurferRef.current
-                ws.on("ready", () => {
-                    if (disposed) return
-                    waveDurationRef.current = ws.getDuration()
-                    setWaveReady(true)
-                })
-                ws.on("timeupdate", (current: number) => {
-                    if (disposed) return
-                    const idx = segmentsRef.current.findIndex(
-                        (segment) => current >= segment.start && current <= segment.end,
-                    )
-                    if (idx !== -1) setActiveSegment(idx)
-                })
-                ws.on("error", () => {
-                    if (!disposed) setWaveFailed(true)
-                })
-            } catch {
-                if (!disposed) setWaveFailed(true)
-            }
+        let depth = 0
+        const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes("Files")
+        const onDragEnter = (event: DragEvent) => {
+            if (!hasFiles(event)) return
+            depth += 1
+            setDragging(true)
         }
-
-        mount()
+        const onDragOver = (event: DragEvent) => {
+            if (!hasFiles(event)) return
+            event.preventDefault()
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "copy"
+        }
+        const onDragLeave = (event: DragEvent) => {
+            if (!hasFiles(event)) return
+            depth = Math.max(0, depth - 1)
+            if (depth === 0) setDragging(false)
+        }
+        const onDrop = (event: DragEvent) => {
+            if (!hasFiles(event)) return
+            event.preventDefault()
+            depth = 0
+            setDragging(false)
+            const dropped = Array.from(event.dataTransfer?.files ?? [])
+            if (dropped[0]) acceptFileRef.current(dropped[0], dropped.length)
+        }
+        const onPaste = (event: ClipboardEvent) => {
+            const pasted = Array.from(event.clipboardData?.files ?? [])
+            if (!pasted[0]) return
+            event.preventDefault()
+            acceptFileRef.current(pasted[0], pasted.length)
+        }
+        document.addEventListener("dragenter", onDragEnter)
+        document.addEventListener("dragover", onDragOver)
+        document.addEventListener("dragleave", onDragLeave)
+        document.addEventListener("drop", onDrop)
+        document.addEventListener("paste", onPaste)
         return () => {
-            disposed = true
-            try {
-                instance?.destroy()
-            } catch {
-                // ignora falha ao destruir wavesurfer
-            }
-            if (waveSurferRef.current === (instance as unknown as typeof waveSurferRef.current)) {
-                waveSurferRef.current = null
-            }
+            document.removeEventListener("dragenter", onDragEnter)
+            document.removeEventListener("dragover", onDragOver)
+            document.removeEventListener("dragleave", onDragLeave)
+            document.removeEventListener("drop", onDrop)
+            document.removeEventListener("paste", onPaste)
         }
-    }, [status, jobId])
+    }, [acceptFileRef])
 
     useEffect(() => {
-        if (status !== "done" || !completeMode || !jobId || completeManifest) return
-        let cancelled = false
-        setCompleteLoading(true)
-        getComplete(jobId)
-            .then((manifest) => {
-                if (!cancelled) setCompleteManifest(manifest)
-            })
-            .catch(() => {
-                // pacote ainda nao disponivel ou job nao era complete
-            })
-            .finally(() => {
-                if (!cancelled) setCompleteLoading(false)
-            })
-        return () => {
-            cancelled = true
-        }
-    }, [status, completeMode, jobId, completeManifest])
+        if (busy) return
+        setMessage((current) => (current?.text === BUSY_MESSAGE ? { tone: "info", text: READY_MESSAGE } : current))
+    }, [busy])
 
-    async function handleOpenFolder() {
-        if (!jobId) return
-        setOpeningFolder(true)
-        try {
-            await openCompleteFolder(jobId)
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Nao foi possivel abrir a pasta.")
-        } finally {
-            setOpeningFolder(false)
+    function handleTranscribe() {
+        if (!source) {
+            setMessage({
+                tone: "error",
+                text: "Solte ou escolha um áudio ou vídeo primeiro. Em Mais opções também dá para usar um caminho do computador, um link ou o microfone.",
+            })
+            return
         }
+        startWith(source)
     }
 
-    const running = status === "running"
-    const availableFiles = Object.keys(resultFiles)
+    function clearSource() {
+        if (source?.kind === "file") setFile(null)
+        if (source?.kind === "path") setLocalPath("")
+        if (source?.kind === "url") setUrl("")
+        setMessage(null)
+    }
+
+    function changeMode(next: Mode) {
+        if (next === "custom") return
+        if (options.translate && next === "fast") {
+            setMessage({
+                tone: "info",
+                text: "Traduzir para inglês usa sempre a Máxima qualidade. Desligue a tradução em Mais opções para usar o Rápido.",
+            })
+            return
+        }
+        update({ model: next === "fast" ? AUTO_MODEL : QUALITY_MODEL })
+    }
+
+    function changePath(value: string) {
+        const next = stripPathQuotes(value)
+        setLocalPath(next)
+        if (next.trim()) setSourceKind("path")
+    }
+
+    function changeUrl(value: string) {
+        setUrl(value)
+        if (value.trim()) setSourceKind("url")
+    }
+
+    const activeExtras = [
+        options.diarize ? "Separar quem fala" : null,
+        options.wordTimestamps ? "Tempo por palavra" : null,
+        options.translate ? "Traduzir para inglês" : null,
+        options.vad ? null : "Sem filtro de silêncio",
+        complete.enabled ? "Modo Complete" : null,
+        options.autoStart ? null : "Começa só no botão",
+        mode === "custom" ? `Modelo ${selectedModel?.label ?? options.model}` : null,
+        source?.kind === "path" ? "Caminho do computador" : null,
+        source?.kind === "url" ? "Link da internet" : null,
+    ].filter((item): item is string => Boolean(item))
+
+    const text = useMemo(() => state.text ?? segmentsToText(state.segments), [state.text, state.segments])
+    const fileBase = baseName(state.sourceName || "transcricao")
+    const tookSeconds =
+        state.startedAt && state.finishedAt ? (state.finishedAt - state.startedAt) / 1000 : state.elapsed
+    const showResult = busy || state.phase === "done" || state.segments.length > 0
+    const sameSource = Boolean(startedKey) && sourceKey(source) === startedKey && !busy
+    const actionLabel = !sameSource
+        ? "Transcrever"
+        : state.phase === "done"
+          ? "Transcrever de novo"
+          : state.phase === "error" || state.phase === "canceled"
+            ? "Tentar de novo"
+            : "Transcrever"
+    const showNotice = Boolean(state.notice) && (busy || state.phase === "canceled")
 
     return (
         <div className="space-y-4">
-            {error ? (
-                <div className="app-alert rounded-xl px-4 py-3 text-sm">
-                    <div className="flex gap-2">
-                        <Captions className="mt-0.5 size-4 shrink-0" />
-                        <span className="whitespace-pre-wrap">{error}</span>
+            {dragging ? (
+                <div className="pointer-events-none fixed inset-3 z-[90] grid place-items-center rounded-2xl border-2 border-dashed border-foreground/40 bg-background/70 backdrop-blur-sm">
+                    <div className="grid justify-items-center gap-3 text-center">
+                        <span className="dropzone-icon grid size-16 place-items-center rounded-full">
+                            <Upload className="size-7" />
+                        </span>
+                        <span className="font-jakarta text-xl font-extrabold">
+                            {options.autoStart ? "Solte para transcrever" : "Solte para escolher este arquivo"}
+                        </span>
                     </div>
                 </div>
             ) : null}
 
-            <motion.div {...cardEnter} className="grid gap-4 xl:grid-cols-[minmax(290px,0.72fr)_minmax(0,1.28fr)]">
-                <Panel title="Fonte" subtitle="Aceita video ou audio. Use o caminho local para arquivos grandes." icon={Captions}>
-                    <div className="grid gap-4">
-                        <MediaField
-                            file={file}
-                            onChange={setFile}
-                            label="Escolher video/audio"
-                            helper="mp4, mkv, mov, webm, mp3, wav, m4a"
-                        />
-                        <TextField
-                            label="Caminho local (alternativo)"
-                            value={localPath}
-                            onChange={setLocalPath}
-                            placeholder="C:/Users/zywl/Downloads/video.mp4"
-                        />
-                        <div className="grid gap-2">
-                            <TextField
-                                label="URL (YouTube/web)"
-                                value={url}
-                                onChange={setUrl}
-                                placeholder="https://www.youtube.com/watch?v=..."
-                            />
-                            <span className="app-faint text-xs">
-                                Se preenchida, a URL tem prioridade sobre o arquivo.
-                            </span>
-                        </div>
-                        <div className="grid gap-2">
-                            {recording ? (
-                                <Button type="button" variant="outline" className="w-full" onClick={stopRecording}>
-                                    <Square className="size-4" />
-                                    Parar ({formatTimecode(recordSeconds)})
-                                </Button>
-                            ) : (
-                                <Button type="button" variant="outline" className="w-full" onClick={startRecording}>
-                                    <Mic className="size-4" />
-                                    Gravar do microfone
-                                </Button>
-                            )}
-                            <span className="app-faint text-xs">
-                                A gravacao vira um arquivo gravacao.webm e segue o mesmo fluxo do upload.
-                            </span>
-                        </div>
-                        {capabilities ? (
-                            <div className="grid gap-2">
-                                <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
-                                    <span className="app-faint text-xs font-semibold uppercase tracking-[0.16em]">ffmpeg</span>
-                                    <span className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]" data-tone={capabilities.ffmpeg ? "good" : "bad"}>
-                                        {capabilities.ffmpeg ? "ok" : "faltando"}
-                                    </span>
-                                </div>
-                                <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
-                                    <span className="app-faint text-xs font-semibold uppercase tracking-[0.16em]">Tempo por palavra</span>
-                                    <span className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]" data-tone={capabilities.whisperx ? "good" : "bad"}>
-                                        {capabilities.whisperx ? "ok" : "faltando"}
-                                    </span>
-                                </div>
-                                <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
-                                    <span className="app-faint text-xs font-semibold uppercase tracking-[0.16em]">diarizacao</span>
-                                    <span className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]" data-tone={capabilities.diarization ? "good" : "bad"}>
-                                        {capabilities.diarization ? "ok" : "faltando"}
-                                    </span>
-                                </div>
-                            </div>
-                        ) : null}
-                    </div>
-                </Panel>
-
-                <Panel title="Opcoes de transcricao" subtitle="Modelo, idioma, diarizacao, timestamps e formatos de saida." icon={Settings2}>
-                    <div className="grid gap-4">
-                        <div className="grid gap-3 md:grid-cols-2">
-                            <SelectField label="Modelo" value={model} options={modelOptions} onChange={setModel} />
-                            <SelectField label="Idioma" value={language} options={languageOptions} onChange={setLanguage} />
-                        </div>
-
-                        <div className="grid gap-3 md:grid-cols-2">
-                            <CheckboxRow checked={diarize} onChange={setDiarize} label="Diarizacao (identificar locutores)" helper="Requer token HuggingFace (campo abaixo)." />
-                            <CheckboxRow checked={wordTimestamps} onChange={setWordTimestamps} label="Timestamps por palavra" helper="Alinhamento fino por palavra." />
-                            <CheckboxRow checked={vad} onChange={setVad} label="Filtrar silencio (VAD)" helper="Remove trechos sem fala." />
-                            <CheckboxRow checked={translate} onChange={setTranslate} label="Traduzir para ingles" helper="Saida em ingles." />
-                        </div>
-
-                        {diarize ? (
-                            <div className="grid gap-3 md:grid-cols-2">
-                                <TextField label="Min locutores" value={minSpeakers} onChange={setMinSpeakers} placeholder="auto" type="number" />
-                                <TextField label="Max locutores" value={maxSpeakers} onChange={setMaxSpeakers} placeholder="auto" type="number" />
-                            </div>
-                        ) : null}
-
-                        <div className="grid gap-2">
-                            <span className="field-label">Formatos de saida</span>
-                            <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-5">
-                                {formatLabels.map((entry) => (
-                                    <CheckboxRow
-                                        key={entry.key}
-                                        checked={Boolean(formats[entry.key])}
-                                        onChange={(checked) => setFormats((current) => ({ ...current, [entry.key]: checked }))}
-                                        label={entry.label}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-
-                        <TextField
-                            label="Token HuggingFace (opcional, p/ diarizacao)"
-                            value={hfToken}
-                            onChange={setHfToken}
-                            placeholder="hf_..."
-                            type="password"
-                        />
-
-                        <div className="grid gap-3 rounded-xl border border-foreground/10 p-3">
-                            <CheckboxRow
-                                checked={completeMode}
-                                onChange={setCompleteMode}
-                                label="Modo Complete"
-                                helper="Gera frames, contact sheet, imagens curadas por cena e docs (README/FEEDBACK/SPEC) num passo so."
-                            />
-                            {completeMode ? (
-                                <div className="grid gap-3">
-                                    <div className="grid gap-3 md:grid-cols-2">
-                                        <TextField label="Frame a cada (s)" value={frameInterval} onChange={setFrameInterval} placeholder="3" type="number" />
-                                        <TextField label="Sensibilidade de cena" value={sceneThreshold} onChange={setSceneThreshold} placeholder="0.30" type="number" />
-                                    </div>
-                                    <CheckboxRow
-                                        checked={genDocs}
-                                        onChange={setGenDocs}
-                                        label="Gerar docs (IA de visao)"
-                                        helper="Manda contact sheet + cenas + transcricao pro modelo multimodal e escreve README/FEEDBACK/SPEC."
-                                    />
-                                    {genDocs ? (
-                                        <div className="grid gap-3">
-                                            <div className="grid gap-3 md:grid-cols-2">
-                                                <TextField label="Vision base URL" value={visionBaseUrl} onChange={setVisionBaseUrl} placeholder={DEFAULT_VISION_BASE_URL} />
-                                                <TextField label="Vision modelo" value={visionModel} onChange={setVisionModel} placeholder={DEFAULT_VISION_MODEL} />
-                                            </div>
-                                            <TextField label="Vision API key (opcional)" value={visionApiKey} onChange={setVisionApiKey} placeholder="sk-..." type="password" />
-                                        </div>
-                                    ) : null}
-                                    <div className="grid gap-3 md:grid-cols-2">
-                                        <TextField label="Nome da pasta (slug)" value={outputName} onChange={setOutputName} placeholder="auto (IA sugere)" />
-                                        <TextField label="Pasta de saida (opcional)" value={outputDir} onChange={setOutputDir} placeholder="C:/Users/zywl/WebstormProjects/sharpz" />
-                                    </div>
-                                    <div className="grid gap-2 md:grid-cols-2">
-                                        <CheckboxRow checked={makeZip} onChange={setMakeZip} label="Gerar .zip" />
-                                        <CheckboxRow checked={openFolderOpt} onChange={setOpenFolderOpt} label="Abrir pasta ao terminar" />
-                                    </div>
-                                </div>
-                            ) : null}
-                        </div>
-
-                        <Button onClick={handleTranscribe} disabled={running} size="lg" className="w-full">
-                            {running ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-                            Transcrever
-                        </Button>
-                    </div>
-                </Panel>
-            </motion.div>
-
             <motion.div {...cardEnter}>
-                <Panel title="Resultado" subtitle="Progresso, segmentos ao vivo e downloads ficam aqui." icon={Users}>
-                    {status === "idle" ? (
-                        <EmptyState text="Configure as opcoes e clique em Transcrever para iniciar." />
-                    ) : (
-                        <div className="space-y-4">
-                            {status === "running" || status === "done" ? (
-                                <div className="grid gap-2">
-                                    <div className="flex items-center justify-between text-xs">
-                                        <span className="app-faint font-semibold uppercase tracking-[0.16em]">{stage || "processando"}</span>
-                                        <span className="font-jakarta font-extrabold">{Math.round(pct * 100)}%</span>
-                                    </div>
-                                    <div className="h-2 w-full overflow-hidden rounded-full bg-foreground/10">
-                                        <div
-                                            className="h-full rounded-full bg-foreground/70 transition-all"
-                                            style={{ width: `${Math.min(100, Math.max(0, pct * 100))}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            ) : null}
+                <Panel
+                    title="Transcrição"
+                    subtitle="Solte um áudio ou vídeo e receba o texto. Funciona com áudio do WhatsApp."
+                    icon={AudioLines}
+                >
+                    <div className="grid gap-4">
+                        <MediaDropzone
+                            dragging={dragging}
+                            source={describeSource(source)}
+                            autoStart={options.autoStart}
+                            onPick={(picked) => acceptFile(picked)}
+                            onClear={clearSource}
+                        />
 
-                            {status === "done" ? (
-                                <div className="grid gap-3 md:grid-cols-4">
-                                    <Metric label="Idioma" value={detectedLanguage ?? "n/a"} />
-                                    <Metric label="Duracao" value={duration != null ? formatTimecode(duration) : "n/a"} />
-                                    <Metric label="Tempo" value={elapsed != null ? `${elapsed.toFixed(1)}s` : "n/a"} />
-                                    <Metric label="Segmentos" value={String(segments.length)} helper={degraded.length ? `degradado: ${degraded.join(", ")}` : undefined} />
-                                </div>
-                            ) : null}
+                        {recorder.recording ? (
+                            <div className="status-card flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3">
+                                <span className="inline-flex items-center gap-2 text-sm font-semibold tabular-nums">
+                                    <span className="size-2.5 animate-pulse rounded-full bg-red-500" />
+                                    Gravando do microfone · {formatClock(recorder.seconds)}
+                                </span>
+                                <Button type="button" variant="outline" size="sm" onClick={recorder.stop}>
+                                    <Square className="size-3.5" />
+                                    Parar e usar a gravação
+                                </Button>
+                            </div>
+                        ) : null}
 
-                            {degraded.length ? (
-                                <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
-                                    Etapas degradadas: {degraded.join(", ")}. A transcricao base foi gerada mesmo assim.
+                        <div className="grid items-start gap-4 lg:grid-cols-[minmax(200px,260px)_minmax(0,1fr)]">
+                            <SelectField
+                                label="Idioma"
+                                value={options.language}
+                                options={LANGUAGE_OPTIONS}
+                                onChange={(language) => update({ language })}
+                            />
+                            <div className="grid min-w-0 gap-2">
+                                <span className="field-label">Modo</span>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <Segmented<Mode>
+                                        value={mode}
+                                        onChange={changeMode}
+                                        options={[
+                                            { value: "fast", label: "Rápido" },
+                                            { value: "quality", label: "Máxima qualidade" },
+                                        ]}
+                                        className="h-11"
+                                    />
+                                    {turbo && !turbo.downloaded ? (
+                                        <ModelDownload model={turbo} label="Baixar modelo rápido (1,6 GB)" onDone={refreshModels} />
+                                    ) : null}
                                 </div>
-                            ) : null}
+                                <p className="app-faint text-xs leading-5">{modeHint}</p>
+                            </div>
+                        </div>
 
-                            {status === "done" && jobId ? (
-                                <div className="status-card rounded-xl p-3">
-                                    <div className="mb-2 flex items-center justify-between">
-                                        <span className="app-faint text-xs font-semibold uppercase tracking-[0.16em]">Forma de onda</span>
-                                        <span className="app-faint text-xs">
-                                            {waveFailed ? "indisponivel" : waveReady ? "clique num segmento p/ ir ate o trecho" : "carregando..."}
+                        <div className="flex flex-wrap items-center gap-3">
+                            <Button type="button" size="lg" onClick={handleTranscribe} disabled={busy}>
+                                {busy ? (
+                                    <Loader2 className="size-4 animate-spin" />
+                                ) : actionLabel === "Transcrever" ? (
+                                    <Play className="size-4" />
+                                ) : (
+                                    <RotateCcw className="size-4" />
+                                )}
+                                {actionLabel}
+                            </Button>
+                            {!busy && !options.autoStart ? (
+                                <span className="app-faint text-xs">Começar sozinho está desligado em Mais opções.</span>
+                            ) : null}
+                        </div>
+
+                        {message ? (
+                            <div
+                                className={cn(
+                                    "rounded-xl px-4 py-3 text-sm",
+                                    message.tone === "error" ? "app-alert" : "status-card",
+                                )}
+                                role={message.tone === "error" ? "alert" : "status"}
+                            >
+                                {message.text}
+                            </div>
+                        ) : null}
+
+                        {state.phase === "error" && state.error ? (
+                            <div className="app-alert rounded-xl px-4 py-3 text-sm" role="alert">
+                                <div className="flex gap-2">
+                                    <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                                    <span className="whitespace-pre-wrap">{state.error.message}</span>
+                                </div>
+                                {state.error.detail ? (
+                                    <details className="mt-2">
+                                        <summary className="cursor-pointer text-xs font-semibold">Ver detalhes técnicos</summary>
+                                        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs">{state.error.detail}</pre>
+                                    </details>
+                                ) : null}
+                            </div>
+                        ) : null}
+
+                        {showNotice ? (
+                            <div className="status-card rounded-xl px-4 py-3 text-sm" role="status">
+                                {state.notice}
+                            </div>
+                        ) : null}
+
+                        {busy ? <TranscribeProgress job={state} modelName={jobModelName} onCancel={job.cancel} /> : null}
+
+                        <div className="grid gap-4 border-t border-foreground/10 pt-4">
+                            <button
+                                type="button"
+                                onClick={() => update({ moreOpen: !options.moreOpen })}
+                                aria-expanded={options.moreOpen}
+                                className="flex w-full items-center justify-between gap-3 text-left"
+                            >
+                                <span className="flex min-w-0 flex-wrap items-center gap-2">
+                                    <Settings2 className="size-4 shrink-0" />
+                                    <span className="text-sm font-semibold">Mais opções</span>
+                                    {activeExtras.map((item) => (
+                                        <span
+                                            key={item}
+                                            className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em]"
+                                            data-tone="warn"
+                                        >
+                                            {item}
                                         </span>
-                                    </div>
-                                    <div ref={waveContainerRef} className={cn("min-h-[72px] w-full", waveFailed && "hidden")} />
-                                    {waveFailed ? (
-                                        <p className="app-muted text-sm">
-                                            Nao foi possivel carregar a onda. Use a lista de segmentos abaixo.
+                                    ))}
+                                </span>
+                                <ChevronDown className={cn("size-4 shrink-0 transition-transform", options.moreOpen && "rotate-180")} />
+                            </button>
+
+                            {options.moreOpen ? (
+                                <div className="grid gap-5">
+                                    <CheckboxRow
+                                        checked={options.autoStart}
+                                        onChange={(autoStart) => update({ autoStart })}
+                                        label="Começar assim que soltar o arquivo"
+                                        helper="Vale para soltar, escolher, colar (Ctrl+V) ou parar a gravação do microfone."
+                                    />
+
+                                    <OptionGroup title="Modelo e precisão">
+                                        <div className="grid gap-2 md:max-w-md">
+                                            <SelectField
+                                                label="Modelo exato"
+                                                value={effectiveModel}
+                                                options={modelOptions}
+                                                onChange={(model) => update({ model })}
+                                            />
+                                            {modelNotes.map((note) => (
+                                                <p key={note} className="text-xs leading-5 text-amber-700 dark:text-amber-300">
+                                                    {note}
+                                                </p>
+                                            ))}
+                                        </div>
+                                        <div className="grid gap-3 md:grid-cols-3">
+                                            <CheckboxRow
+                                                checked={options.wordTimestamps}
+                                                onChange={(wordTimestamps) => update({ wordTimestamps })}
+                                                label="Tempo por palavra"
+                                                helper="Guarda o tempo de cada palavra no JSON. Fica um pouco mais lento."
+                                            />
+                                            <CheckboxRow
+                                                checked={options.vad}
+                                                onChange={(vad) => update({ vad })}
+                                                label="Filtrar silêncio"
+                                                helper="Pula os trechos sem fala. Deixa mais rápido."
+                                            />
+                                            <CheckboxRow
+                                                checked={options.translate}
+                                                onChange={(translate) => update({ translate })}
+                                                label="Traduzir para inglês"
+                                                helper="O texto sai em inglês. Usa sempre a Máxima qualidade."
+                                            />
+                                        </div>
+                                    </OptionGroup>
+
+                                    <OptionGroup title="Quem fala">
+                                        <CheckboxRow
+                                            checked={options.diarize}
+                                            onChange={(diarize) => update({ diarize })}
+                                            label="Separar quem fala (diarização)"
+                                            helper="Precisa de um token da Hugging Face e de aceitar os termos do pyannote no site dela. Fica bem mais lenta."
+                                        />
+                                        {options.diarize ? (
+                                            <div className="grid gap-3 md:grid-cols-2">
+                                                <TextField
+                                                    label="Mínimo de pessoas"
+                                                    value={minSpeakers}
+                                                    onChange={setMinSpeakers}
+                                                    placeholder="automático"
+                                                    type="number"
+                                                />
+                                                <TextField
+                                                    label="Máximo de pessoas"
+                                                    value={maxSpeakers}
+                                                    onChange={setMaxSpeakers}
+                                                    placeholder="automático"
+                                                    type="number"
+                                                />
+                                            </div>
+                                        ) : null}
+                                        <TextField
+                                            label="Token da Hugging Face (para separar quem fala)"
+                                            value={hfToken}
+                                            onChange={setHfToken}
+                                            placeholder="hf_..."
+                                            type="password"
+                                        />
+                                    </OptionGroup>
+
+                                    <OptionGroup title="Arquivos gerados">
+                                        <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                                            {FORMAT_OPTIONS.map((format) => (
+                                                <CheckboxRow
+                                                    key={format.key}
+                                                    checked={format.key === "txt" || options.formats[format.key]}
+                                                    onChange={(checked) => {
+                                                        if (format.key !== "txt") update({ formats: { ...options.formats, [format.key]: checked } })
+                                                    }}
+                                                    label={format.label}
+                                                    helper={format.helper}
+                                                />
+                                            ))}
+                                        </div>
+                                    </OptionGroup>
+
+                                    <OptionGroup title="Outras fontes">
+                                        <div className="grid gap-3 md:grid-cols-2">
+                                            <TextField
+                                                label="Caminho no computador"
+                                                value={localPath}
+                                                onChange={changePath}
+                                                placeholder="C:\Users\zywl\Downloads\video.mp4"
+                                            />
+                                            <TextField
+                                                label="Link do YouTube ou de outro site"
+                                                value={url}
+                                                onChange={changeUrl}
+                                                placeholder="https://www.youtube.com/watch?v=..."
+                                            />
+                                        </div>
+                                        <p className="app-faint text-xs leading-5">
+                                            O caminho lê o arquivo direto do disco, sem enviar: bom para vídeos grandes. Vale a última fonte que você
+                                            escolheu ou preencheu.
                                         </p>
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            {recorder.recording ? (
+                                                <Button type="button" variant="outline" onClick={recorder.stop}>
+                                                    <Square className="size-4" />
+                                                    Parar ({formatClock(recorder.seconds)})
+                                                </Button>
+                                            ) : (
+                                                <Button type="button" variant="outline" onClick={recorder.start}>
+                                                    <Mic className="size-4" />
+                                                    Gravar do microfone
+                                                </Button>
+                                            )}
+                                            <span className="app-faint text-xs">
+                                                A gravação vira um arquivo e segue o mesmo caminho de um arquivo solto aqui.
+                                            </span>
+                                        </div>
+                                    </OptionGroup>
+
+                                    <CompleteModeFields settings={complete} onChange={updateComplete} />
+
+                                    {capabilities ? (
+                                        <OptionGroup title="O que está instalado">
+                                            <div className="flex flex-wrap gap-2">
+                                                <CapabilityPill label="ffmpeg" ok={capabilities.ffmpeg} />
+                                                <CapabilityPill label="Tempo por palavra" ok={capabilities.whisperx} />
+                                                <CapabilityPill label="Diarização" ok={capabilities.diarization} />
+                                            </div>
+                                        </OptionGroup>
                                     ) : null}
                                 </div>
                             ) : null}
-
-                            <div className="preview-card max-h-[420px] overflow-auto p-3">
-                                {segments.length ? (
-                                    <div className="grid gap-1.5">
-                                        {segments.map((segment, index) => (
-                                            <button
-                                                key={`${segment.id ?? index}-${segment.start}`}
-                                                type="button"
-                                                onClick={() => seekToSegment(segment, index)}
-                                                data-active={activeSegment === index}
-                                                className={cn(
-                                                    "w-full rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-foreground/5",
-                                                    activeSegment === index && "bg-foreground/10",
-                                                )}
-                                            >
-                                                <div className="flex flex-wrap items-center gap-2 text-xs">
-                                                    <code className="app-codeblock rounded px-1.5 py-0.5 font-semibold">
-                                                        [{formatTimecode(segment.start)}]
-                                                    </code>
-                                                    {segment.speaker ? (
-                                                        <span className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]">
-                                                            {segment.speaker}
-                                                        </span>
-                                                    ) : null}
-                                                </div>
-                                                <p className="mt-1 text-sm leading-5">{segment.text.trim()}</p>
-                                            </button>
-                                        ))}
-                                        <div ref={segmentsEndRef} />
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center justify-center gap-2 px-4 py-10 text-center">
-                                        <Loader2 className="size-4 animate-spin" />
-                                        <span className="app-muted text-sm">Aguardando os primeiros segmentos...</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {status === "done" ? (
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <Button type="button" variant="outline" onClick={handleCopy} disabled={!transcriptText}>
-                                        {copied ? <ClipboardCheck className="size-4" /> : <Clipboard className="size-4" />}
-                                        {copied ? "Copiado" : "Copiar texto"}
-                                    </Button>
-                                    {jobId
-                                        ? availableFiles.map((format) => (
-                                              <Button key={format} asChild variant="outline">
-                                                  <a href={downloadUrl(jobId, format)}>
-                                                      <Download className="size-4" />
-                                                      {format.toUpperCase()}
-                                                  </a>
-                                              </Button>
-                                          ))
-                                        : null}
-                                </div>
-                            ) : null}
                         </div>
-                    )}
+                    </div>
                 </Panel>
             </motion.div>
 
-            {completeMode && status === "done" && jobId ? (
-                <motion.div {...cardEnter}>
-                    <Panel title="Pacote Complete" subtitle="Frames, contact sheet, imagens curadas e docs gerados a partir do video." icon={Wand2}>
-                        {completeLoading && !completeManifest ? (
-                            <div className="flex items-center justify-center gap-2 px-4 py-10 text-center">
-                                <Loader2 className="size-4 animate-spin" />
-                                <span className="app-muted text-sm">Montando o pacote (frames, cenas, docs)...</span>
-                            </div>
-                        ) : completeManifest ? (
-                            <div className="grid gap-4">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <div className="font-jakarta text-base font-extrabold leading-tight">{completeManifest.title || completeManifest.slug}</div>
-                                        <div className="app-faint truncate text-xs">{completeManifest.dest_dir || completeManifest.out_dir}</div>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <Button type="button" variant="outline" onClick={handleOpenFolder} disabled={openingFolder}>
-                                            {openingFolder ? <Loader2 className="size-4 animate-spin" /> : <FolderOpen className="size-4" />}
-                                            Abrir pasta
-                                        </Button>
-                                        {completeManifest.zip ? (
-                                            <Button asChild variant="outline">
-                                                <a href={completeZipUrl(jobId)}>
-                                                    <Archive className="size-4" />
-                                                    Baixar .zip
-                                                </a>
-                                            </Button>
-                                        ) : null}
-                                    </div>
-                                </div>
-
-                                {!completeManifest.docs_generated ? (
-                                    <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
-                                        Docs de IA nao foram gerados (Vision LLM desligado ou indisponivel). Frames, cenas e transcricao estao no pacote.
-                                    </div>
-                                ) : null}
-
-                                {completeManifest.docs.length ? (
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        {completeManifest.docs.map((doc) => (
-                                            <Button key={doc} asChild variant="outline">
-                                                <a href={completeFileUrl(jobId, doc)} target="_blank" rel="noreferrer">
-                                                    <FileText className="size-4" />
-                                                    {doc}
-                                                </a>
-                                            </Button>
-                                        ))}
-                                    </div>
-                                ) : null}
-
-                                <div className="grid gap-2">
-                                    <span className="field-label flex items-center gap-2">
-                                        <Images className="size-3.5" />
-                                        Imagens curadas ({completeManifest.images.length})
-                                    </span>
-                                    {completeManifest.images.length ? (
-                                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                                            {completeManifest.images.map((img) => {
-                                                const base = img.split("/").pop() ?? img
-                                                const caption = completeManifest.captions?.[base]
-                                                return (
-                                                    <a
-                                                        key={img}
-                                                        href={completeFileUrl(jobId, img)}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        className="group preview-card overflow-hidden rounded-lg"
-                                                    >
-                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                        <img src={completeFileUrl(jobId, img)} alt={caption ?? base} className="aspect-video w-full object-cover" loading="lazy" />
-                                                        <div className="px-2 py-1.5">
-                                                            <div className="truncate text-[11px] font-semibold">{base}</div>
-                                                            {caption ? <div className="app-faint line-clamp-2 text-[11px] leading-4">{caption}</div> : null}
-                                                        </div>
-                                                    </a>
-                                                )
-                                            })}
-                                        </div>
-                                    ) : (
-                                        <EmptyState text="Nenhuma imagem curada (entrada sem video?)." />
-                                    )}
-                                </div>
-                            </div>
-                        ) : (
-                            <EmptyState text="Pacote indisponivel." />
-                        )}
-                    </Panel>
-                </motion.div>
+            {showResult ? (
+                <TranscriptResult
+                    job={state}
+                    text={text}
+                    fileBase={fileBase}
+                    busy={busy}
+                    modelName={jobModelName}
+                    tookSeconds={tookSeconds}
+                    onClear={job.clear}
+                />
             ) : null}
 
-            {status === "done" && jobId ? (
-                <motion.div {...cardEnter}>
-                    <Panel title="Resumo (LLM)" subtitle="Gere um resumo da transcricao via API compativel com OpenAI (Ollama, etc)." icon={Sparkles}>
-                        <div className="grid gap-4">
-                            <div className="grid gap-3 md:grid-cols-2">
-                                <TextField label="Base URL" value={llmBaseUrl} onChange={setLlmBaseUrl} placeholder={DEFAULT_LLM_BASE_URL} />
-                                <TextField label="Modelo" value={llmModel} onChange={setLlmModel} placeholder={DEFAULT_LLM_MODEL} />
-                            </div>
-                            <TextField label="API key (opcional)" value={llmApiKey} onChange={setLlmApiKey} placeholder="sk-..." type="password" />
+            {state.mode === "complete" && state.phase === "done" && state.jobId ? (
+                <CompletePackagePanel key={state.jobId} jobId={state.jobId} initial={state.complete} />
+            ) : null}
 
-                            <Button onClick={handleSummarize} disabled={summarizing}>
-                                {summarizing ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                                Resumir
-                            </Button>
-
-                            {summaryError ? (
-                                <div className="app-alert rounded-xl px-4 py-3 text-sm">
-                                    <div className="flex gap-2">
-                                        <Sparkles className="mt-0.5 size-4 shrink-0" />
-                                        <span className="whitespace-pre-wrap">{summaryError}</span>
-                                    </div>
-                                </div>
-                            ) : null}
-
-                            {summaryText ? (
-                                <div className="preview-card max-h-[420px] overflow-auto p-4">
-                                    <pre className="whitespace-pre-wrap font-sans text-sm leading-6">{summaryText}</pre>
-                                </div>
-                            ) : null}
-                        </div>
-                    </Panel>
-                </motion.div>
+            {state.phase === "done" && state.jobId ? (
+                <SummaryPanel
+                    key={state.jobId}
+                    jobId={state.jobId}
+                    language={state.language ?? (options.language === "auto" ? undefined : options.language)}
+                    fileBase={fileBase}
+                />
             ) : null}
         </div>
     )

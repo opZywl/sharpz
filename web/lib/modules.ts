@@ -56,37 +56,37 @@ export interface Module {
 export const MODULES: Module[] = [
     {
         id: "imagem",
-        title: "Imagem & Fundo",
-        label: "Limpar e recortar",
+        title: "Imagem e fundo",
+        label: "Tire o fundo de fotos",
         description:
-            "Remova o fundo das suas imagens, gere versoes limpas com transparencia e processe pastas inteiras. Aceita praticamente qualquer formato (PNG, JPG, WEBP, BMP, TIFF).",
+            "Tire o fundo de fotos e imagens, uma de cada vez ou a pasta toda. Se quiser, também vira desenho em SVG. Aceita PNG, JPG, WEBP, BMP e TIFF.",
         icon: ImagePlus,
         accent: "text-emerald-500 dark:text-emerald-200",
         tools: [
             {
                 id: "clean",
-                title: "Remover Fundo",
-                label: "Recorte com IA",
+                title: "Remover fundo",
+                label: "Fundo transparente",
                 description:
-                    "Recorte com controle fino: IA ou claro/escuro, bordas, transparencia e cor. Aceita PNG, JPG, WEBP, BMP e TIFF.",
+                    "Tire o fundo de uma imagem e baixe em PNG ou WEBP. Dá para ajustar bordas, cor e o modo de recorte (IA ou claro/escuro).",
                 icon: Scissors,
                 accent: "text-zinc-700 dark:text-stone-100",
             },
             {
                 id: "pipeline",
-                title: "Pipeline",
-                label: "Fundo + vetor",
+                title: "Remover fundo + SVG",
+                label: "Fundo e SVG de uma vez",
                 description:
-                    "Faz tudo de uma vez: remove o fundo e ja transforma a imagem em vetor (SVG) num passo so.",
+                    "Tire o fundo e já transforme a imagem em SVG, num passo só. SVG é um desenho que amplia sem perder qualidade.",
                 icon: Wand2,
                 accent: "text-emerald-500 dark:text-emerald-200",
             },
             {
                 id: "batch-pipeline",
-                title: "Batch Pipeline",
-                label: "Pasta inteira",
+                title: "Pasta inteira",
+                label: "Várias imagens de uma vez",
                 description:
-                    "O mesmo fluxo (remover fundo + vetorizar), mas aplicado a uma pasta inteira de imagens de uma vez.",
+                    "Tire o fundo e gere o SVG de todas as imagens de uma pasta do computador. Dá para pular uma das duas etapas.",
                 icon: FolderOpen,
                 accent: "text-violet-600 dark:text-violet-200",
             },
@@ -95,18 +95,18 @@ export const MODULES: Module[] = [
     {
         id: "vetor",
         title: "Vetor (SVG)",
-        label: "Imagem em vetor",
+        label: "Transforme imagem em SVG",
         description:
-            "Converte uma imagem em SVG: grafico vetorial que amplia sem perder qualidade e e editavel em ferramentas de design. Ideal para logos e icones.",
+            "Transforme uma imagem em SVG, um desenho que amplia sem perder qualidade e pode ser editado em programas de design. Ideal para logos e ícones.",
         icon: FileCode2,
         accent: "text-amber-600 dark:text-amber-200",
         tools: [
             {
                 id: "svg",
-                title: "PNG -> SVG",
-                label: "Vetorizar",
+                title: "Vetorizar (SVG)",
+                label: "Amplia sem perder qualidade",
                 description:
-                    "Transforma uma imagem em vetor (SVG) que amplia sem perder qualidade. Escolha cor ou preto e branco e ajuste o nivel de detalhe.",
+                    "Transforme uma imagem em SVG, ideal para logos e ícones. Escolha colorido ou preto e branco e ajuste o nível de detalhe.",
                 icon: FileCode2,
                 accent: "text-amber-600 dark:text-amber-200",
             },
@@ -115,45 +115,45 @@ export const MODULES: Module[] = [
     {
         id: "ktx",
         title: "Texturas KTX",
-        label: "Texturas 3D (avancado)",
+        label: "Para cenas 3D (avançado)",
         description:
-            "Texturas KTX2 usadas no portfolio e em cenas 3D. Converta imagem ou pasta, corrija orientacao ou gere no tamanho do portfolio. Requer as ferramentas KTX instaladas.",
+            "Transforme imagens em KTX2, textura leve para cenas 3D como as do portfólio. Também conserta texturas viradas. Precisa das ferramentas de textura instaladas.",
         icon: Box,
         accent: "text-sky-600 dark:text-sky-200",
         tools: [
             {
                 id: "ktx-single",
-                title: "PNG -> KTX",
-                label: "Imagem unica",
+                title: "Imagem para KTX",
+                label: "Uma imagem por vez",
                 description:
-                    "Converte uma imagem no formato de textura KTX2 (usado em 3D), escolhendo um preset de qualidade.",
+                    "Transforme uma imagem em KTX2, textura leve para cenas 3D. Escolha o nível de qualidade antes de converter.",
                 icon: Box,
                 accent: "text-sky-600 dark:text-sky-200",
             },
             {
                 id: "ktx-batch",
-                title: "Batch KTX",
-                label: "Pasta inteira",
+                title: "Pasta para KTX",
+                label: "Várias imagens de uma vez",
                 description:
-                    "Converte de uma vez todas as imagens (PNG/JPG) de uma pasta para textura KTX2.",
+                    "Transforme em KTX2 todas as imagens PNG ou JPG de uma pasta do computador.",
                 icon: FolderSync,
                 accent: "text-orange-600 dark:text-orange-200",
             },
             {
                 id: "ktx-orientation",
-                title: "Patch KTX",
-                label: "Corrige orientacao",
+                title: "Corrigir KTX virado",
+                label: "Para arquivos KTX prontos",
                 description:
-                    "Conserta texturas KTX que aparecem de cabeca para baixo ou invertidas na cena 3D.",
+                    "Conserte uma textura KTX que aparece de cabeça para baixo ou espelhada na cena 3D.",
                 icon: ShieldCheck,
                 accent: "text-lime-600 dark:text-lime-200",
             },
             {
                 id: "portfolio-ktx",
-                title: "Portfolio KTX",
-                label: "960 x 540",
+                title: "Portfólio KTX",
+                label: "Tamanho 960 x 540",
                 description:
-                    "Ajusta a imagem ao tamanho 960x540 do portfolio e ja entrega a textura KTX pronta e na orientacao certa.",
+                    "Ajuste a imagem ao tamanho do portfólio (960 x 540) e receba a textura KTX pronta, já na posição certa.",
                 icon: PackageCheck,
                 accent: "text-cyan-600 dark:text-cyan-200",
             },
@@ -161,19 +161,19 @@ export const MODULES: Module[] = [
     },
     {
         id: "transcricao",
-        title: "Transcricao",
-        label: "Video/audio em texto",
+        title: "Transcrição",
+        label: "Áudio ou vídeo em texto",
         description:
-            "Envie um video ou audio e receba o texto transcrito, com legendas, tempo por palavra e separacao de quem fala.",
+            "Solte um áudio ou vídeo (WhatsApp, reunião, aula ou link do YouTube) e receba o texto pronto para copiar. Também gera legenda.",
         icon: AudioLines,
         accent: "text-rose-600 dark:text-rose-200",
         tools: [
             {
                 id: "transcribe",
-                title: "Transcricao",
-                label: "Video -> Texto",
+                title: "Transcrição",
+                label: "Texto e legenda",
                 description:
-                    "Envie um video ou audio e receba o texto, com legendas e separacao de quem fala.",
+                    "Solte um áudio ou vídeo, ou cole um link do YouTube, e receba a transcrição pronta para copiar ou como legenda.",
                 icon: AudioLines,
                 accent: "text-rose-600 dark:text-rose-200",
             },
@@ -182,27 +182,27 @@ export const MODULES: Module[] = [
     {
         id: "documento",
         title: "Documento (PDF)",
-        label: "Imagem em PDF editavel",
+        label: "Crie e edite PDFs",
         description:
-            "Converte uma imagem com texto num PDF visualmente identico a imagem + camada de texto real (selecionavel, pesquisavel e editavel). Le a imagem com IA de visao (ou Tesseract), com verificacao, e mostra o passo a passo ao vivo.",
+            "Transforme a foto ou o print de um documento em PDF com texto de verdade, que dá para copiar, buscar e editar. Ou abra um PDF e edite os textos direto na página.",
         icon: FileType2,
         accent: "text-red-600 dark:text-red-200",
         tools: [
             {
                 id: "image-to-pdf",
-                title: "Imagem -> PDF",
-                label: "PDF editavel 100%",
+                title: "Imagem para PDF",
+                label: "PDF com texto editável",
                 description:
-                    "Imagem com texto -> PDF identico a imagem + camada de texto selecionavel/editavel. Le via Vision LLM (com verificacao) ou Tesseract, passo a passo ao vivo.",
+                    "Transforme a foto de um documento em um PDF igual à imagem, com texto que dá para copiar e editar. A leitura usa IA ou o Tesseract, que funciona sem internet.",
                 icon: FileText,
                 accent: "text-red-600 dark:text-red-200",
             },
             {
                 id: "editor",
-                title: "Editor (Canva)",
-                label: "Arrastar e editar",
+                title: "Editor de PDF",
+                label: "Arraste e edite textos",
                 description:
-                    "Importe um PDF e edite como no Canva: cada texto vira uma caixa que voce arrasta, edita, muda fonte/tamanho/cor e alinha. Exporta de volta pra PDF com texto real.",
+                    "Abra um PDF e edite como no Canva: cada texto vira uma caixa que você arrasta, alinha e muda fonte, tamanho e cor. No fim, baixe o PDF pronto.",
                 icon: MousePointer2,
                 accent: "text-fuchsia-600 dark:text-fuchsia-200",
             },
@@ -211,18 +211,18 @@ export const MODULES: Module[] = [
     {
         id: "pacotes",
         title: "Baixar pacotes",
-        label: "Instalar dependencias",
+        label: "Instale o que falta",
         description:
-            "Central de instalacao do Sharpz. Veja o que ja esta instalado e o que falta (ffmpeg, modelo large-v3 ~3GB, KTX-Software, Ollama...) e instale cada item com 1 clique, acompanhando o progresso ao vivo.",
+            "Veja o que já está instalado e instale o que falta com um clique: modelos de IA, ffmpeg (lê áudio e vídeo) e ferramentas de textura.",
         icon: HardDriveDownload,
         accent: "text-indigo-600 dark:text-indigo-200",
         tools: [
             {
                 id: "packages",
                 title: "Baixar pacotes",
-                label: "Dependencias",
+                label: "Modelos e ferramentas",
                 description:
-                    "Detecta e instala tudo que o Sharpz precisa pra funcionar 100%, com log ao vivo.",
+                    "Descubra o que falta no Sharpz e baixe os pacotes com um clique, vendo o progresso ao vivo.",
                 icon: HardDriveDownload,
                 accent: "text-indigo-600 dark:text-indigo-200",
             },
@@ -231,17 +231,17 @@ export const MODULES: Module[] = [
     {
         id: "sistema",
         title: "Sistema",
-        label: "Status (avancado)",
+        label: "Detalhes técnicos",
         description:
-            "Status tecnico do app: modulos, endpoints, modelos de IA e ferramentas KTX detectadas.",
+            "Veja se o servidor está no ar e o que ele encontrou: módulos, modelos de IA e ferramentas de textura. Útil quando algo não funciona.",
         icon: Server,
         accent: "text-zinc-700 dark:text-zinc-100",
         tools: [
             {
                 id: "system",
                 title: "Sistema",
-                label: "Status",
-                description: "Status e diagnostico do app.",
+                label: "Status e diagnóstico",
+                description: "Veja o status do sistema: servidor, modelos de IA e ferramentas encontradas.",
                 icon: Server,
                 accent: "text-zinc-700 dark:text-zinc-100",
             },

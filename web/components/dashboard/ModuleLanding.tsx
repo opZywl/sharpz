@@ -24,7 +24,7 @@ export function ModuleLanding({
                         <ModuleIcon className={cn("size-6", module.accent)} />
                     </span>
                     <div className="min-w-0">
-                        <p className="app-faint text-[10px] font-bold uppercase tracking-[0.24em]">Modulo</p>
+                        <p className="app-faint text-[10px] font-bold uppercase tracking-[0.24em]">Módulo</p>
                         <h2 className="mt-1 font-jakarta text-2xl font-extrabold uppercase leading-none tracking-tight sm:text-3xl">
                             {module.title}
                         </h2>
@@ -33,7 +33,7 @@ export function ModuleLanding({
                 </div>
             </DashboardShell>
 
-            <Panel title="Ferramentas" subtitle="Selecione uma ferramenta abaixo para comecar." icon={module.icon}>
+            <Panel title="Ferramentas" subtitle="Escolha uma ferramenta para começar." icon={module.icon}>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {module.tools.map((tool) => {
                         const ToolIcon = tool.icon
