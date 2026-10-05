@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="web/public/brand/sharpz-logo.svg" alt="Sharpz" width="140" />
+
 # Sharpz
 
 ### A portfolio-style image cleanup, vectorization, and texture conversion workspace.
@@ -183,8 +185,9 @@ sharpz/
     processor.py          # Core cleanup and SVG pipeline
     ktx.py                # KTX conversion engine
   web/
-    app/                  # Next.js App Router dashboard
+    app/                  # Next.js App Router dashboard (icon.svg, favicon.ico, apple-icon.png)
     components/           # UI primitives and upload/results components
+    public/brand/         # Sharpz logo: sharpz-logo.svg + sharpz-logo-512.webp
 ```
 
 ## Validation

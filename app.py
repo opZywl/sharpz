@@ -1116,6 +1116,7 @@ if __name__ == "__main__":
         server_port=7860,
         inbrowser=True,
         show_error=True,
+        favicon_path=str(Path(__file__).parent / "web" / "app" / "favicon.ico"),
         theme=gr.themes.Base(
             primary_hue=gr.themes.colors.gray,
             secondary_hue=gr.themes.colors.gray,

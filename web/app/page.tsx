@@ -10,8 +10,8 @@ import {
     PackageCheck,
     Search,
     Server,
-    Sparkles,
 } from "lucide-react"
+import Image from "next/image"
 import { useMemo, useState } from "react"
 
 import { DashboardProvider, useDashboard } from "@/components/dashboard/DashboardProvider"
@@ -84,7 +84,7 @@ function Dashboard() {
                         <DashboardShell innerClassName="p-4">
                             <button type="button" onClick={goHome} className="flex w-full items-center gap-3 text-left">
                                 <span className="panel-icon size-11 rounded-2xl">
-                                    <Sparkles className="size-5" />
+                                    <Image src="/brand/sharpz-logo.svg" alt="" width={30} height={30} priority unoptimized />
                                 </span>
                                 <div className="min-w-0">
                                     <h1 className="font-jakarta text-lg font-extrabold uppercase leading-none tracking-tight">
