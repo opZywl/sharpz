@@ -14,7 +14,7 @@ KTX2 is a lightweight texture format, used in 3D scenes like the ones in the por
 | Portfolio KTX | the Portfolio converter, which the installer already sets up |
 | Fix flipped KTX | nothing beyond Sharpz |
 
-KTX-Software can be installed with one click in **Download packages** (item **KTX-Software**). The dashboard shows in the corner whether KTX textures are ready.
+KTX-Software can be installed with one click in **Packages** (item **KTX-Software**). The dashboard shows in the corner whether KTX textures are ready.
 
 ## Image to KTX
 
@@ -22,15 +22,15 @@ Converts one image at a time. Options:
 
 - **Preset:** the quality and compression level. The default (`ultra`) favors quality.
 - **Auto-align:** pads the image to a multiple of 4 pixels, which the format requires.
-- **Auto preset:** chooses the preset on its own; images with transparency use `ultra_rgba`.
-- **Validate PSNR:** compares the texture with the original and reports the quality. Makes the conversion slower.
+- **Automatic preset:** chooses the preset on its own; images with transparency use `ultra_rgba`.
+- **Check PSNR:** compares the texture with the original and reports the quality. Makes the conversion slower.
 
 ## Folder to KTX
 
 Converts every PNG or JPG image in a folder. On top of the options above:
 
-- **Recursive:** includes subfolders.
-- **No subfolders in output:** writes everything straight into the output folder, without recreating the structure.
+- **Include subfolders:** processes files in subfolders too.
+- **No subfolders in the output:** writes everything straight into the output folder, without recreating the structure.
 - **Parallel conversions:** how many images to convert at the same time.
 
 ## Fix flipped KTX

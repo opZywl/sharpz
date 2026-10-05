@@ -10,7 +10,7 @@ Transforma áudio e vídeo em texto. Solte o arquivo, informe um caminho do comp
 
 | Modelo | Tamanho | Observação |
 | --- | --- | --- |
-| **Auto** (padrão) | — | Escolhe sozinho entre o Large v3 Turbo e o Large v3 (veja abaixo). |
+| **Automático** (padrão) | — | Escolhe sozinho entre o Large v3 Turbo e o Large v3 (veja abaixo). |
 | Large v3 Turbo | ~1,6 GB | Quase a mesma qualidade do Large v3 em português e várias vezes mais rápido. |
 | Large v3 | ~3 GB | Melhor qualidade. Baixado pelo instalador. |
 | Large v2 | ~3 GB | Versão anterior do Large. |
@@ -20,7 +20,7 @@ Transforma áudio e vídeo em texto. Solte o arquivo, informe um caminho do comp
 | Tiny | ~80 MB | Só para testes. |
 | Distil Large v3 | ~1,5 GB | Só inglês. |
 
-### Como o Auto escolhe
+### Como o Automático escolhe
 
 - usa o **Large v3 Turbo** quando ele já está baixado;
 - usa o **Large v3** enquanto o Turbo não foi baixado;

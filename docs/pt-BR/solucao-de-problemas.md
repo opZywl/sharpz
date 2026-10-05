@@ -31,7 +31,7 @@ O servidor caiu ou o processamento demorou demais. Confira se a janela **Sharpz 
 
 Falta o KTX-Software. Instale em **Baixar pacotes** (item **KTX-Software**). O painel mostra **Texturas KTX: ok** quando estiver pronto.
 
-## "O conversor do Portfolio KTX não está instalado"
+## "O conversor do Portfólio KTX não está instalado"
 
 Rode `.\sharpz.cmd instalar`. Ele instala tudo que o Portfólio KTX precisa.
 

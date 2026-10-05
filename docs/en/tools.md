@@ -6,7 +6,7 @@
 
 The dashboard is split into modules. Each module groups similar tools; modules with a single tool open that tool directly.
 
-## Image and background
+## Image & background
 
 Remove the background from photos and images. Accepts PNG, JPG, WEBP, BMP and TIFF.
 
@@ -48,7 +48,7 @@ Drop an audio or video file (WhatsApp, meeting, class) or paste a YouTube link a
 | **Image to PDF** | Turns a photo or screenshot of a document into a PDF identical to the image, with real text underneath that you can copy, search and edit. Reading uses a vision AI or Tesseract, which works offline. |
 | **PDF editor** | Opens a PDF and turns each text into a box you can drag, align and restyle with another font, size and color. At the end, download the PDF or a PNG. |
 
-## Download packages
+## Packages
 
 Shows what is already installed and what is missing, with what each item unlocks, and installs it with one click while you follow the progress live. Use it when a tool warns that something is missing.
 

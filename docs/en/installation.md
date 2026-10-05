@@ -11,7 +11,7 @@
 - Node.js 20 or newer
 - Google Chrome (the dashboard opens in it, and the PDF editor uses Chrome to export)
 
-The installer takes care of the rest: `uv` (which creates the transcription environment), FFmpeg, the libraries and the transcription model. The optional items (KTX texture tools, Tesseract and Ollama) can be installed later, with one click, on the **Download packages** screen.
+The installer takes care of the rest: `uv` (which creates the transcription environment), FFmpeg, the libraries and the transcription model. The optional items (KTX texture tools, Tesseract and Ollama) can be installed later, with one click, on the **Packages** screen.
 
 ## The launcher
 

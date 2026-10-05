@@ -14,7 +14,7 @@
 | **Light background (luma)** | Logos and dark strokes on a white background. |
 | **No removal** | Keeps the image as it is (useful when you only want the SVG). |
 
-In the light-based cutout, **Min luma** and **Max luma** set what becomes transparent and what stays opaque, and **Unmult (glow)** recovers the pure color of the glow so it looks good on any background.
+In the light-based cutout, **Luma low** and **Luma high** set what becomes transparent and what stays opaque, and **Unmult (glow)** recovers the pure color of the glow so it looks good on any background.
 
 ## AI models
 
@@ -24,7 +24,7 @@ The models are downloaded once, the first time they are used, and are stored in 
 | --- | --- | --- | --- |
 | **ISNet (fast)** · default | Light and fast, good for most images. | ~180 MB | ~1.5 GB |
 | **BiRefNet Lite (detailed)** | Finer cutout on hair and edges, much slower. | ~220 MB | ~6 GB |
-| **BiRefNet (maximum quality)** | The best cutout and the heaviest. | ~970 MB | several GB |
+| **BiRefNet (best quality)** | The best cutout and the heaviest. | ~970 MB | several GB |
 | **U2Net (lightest)** | The fastest; simpler cutout. | ~175 MB | ~1.4 GB |
 | **BiRefNet Portrait (people)** | Specialized in people and faces. Heavy. | ~970 MB | several GB |
 | **U2Net People (light)** | Full-body people. | ~175 MB | ~1.4 GB (estimated, same base as U2Net) |

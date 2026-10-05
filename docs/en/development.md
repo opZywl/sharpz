@@ -15,7 +15,7 @@ sharpz/
   cli.py                  background removal and SVG from the command line
   ktx_cli.py              KTX conversion from the command line
   add_ktx_orientation.py  orientation fix for KTX textures
-  packages.py             Download packages center (detection and install)
+  packages.py             Packages center (detection and install)
   src/
     processor.py          background removal, AI models and vectorization
     memory.py             out-of-memory detection
@@ -61,7 +61,7 @@ There are two Python environments: `venv` (dashboard server, Python 3.13) and `w
 | `/api/transcribe/jobs/{id}/audio` | GET | Input audio, for playback in the dashboard. |
 | `/api/transcribe/jobs/{id}/summarize` | POST | AI summary. |
 | `/api/transcribe/jobs/{id}/complete` | GET | Complete mode package (manifest, file, zip, open folder). |
-| `/api/packages` | GET | Download packages list. |
+| `/api/packages` | GET | Packages list. |
 | `/api/packages/{id}/install` | POST | Installs a package. |
 | `/api/packages/jobs/{id}/stream` | GET | Live install log. |
 | `/api/image-to-pdf` | POST | Creates an Image to PDF job. |
