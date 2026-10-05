@@ -693,48 +693,52 @@ async def ktx_single(
     _, image = await _read_upload_image(file)
 
     filename_stem = Path(file.filename or "texture").stem or "texture"
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp = Path(tmpdir)
-        input_png = tmp / "input.png"
-        output_ktx = tmp / f"{filename_stem}.ktx"
-        image.save(input_png, format="PNG")
 
-        result = ktx_convert_file(
-            input_png,
-            output_ktx,
-            preset=preset,
-            overwrite=True,
-            auto_align=auto_align,
-            auto_preset=auto_preset,
-            validate_quality=validate_quality,
-        )
+    def work() -> KtxSingleResponse:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            input_png = tmp / "input.png"
+            output_ktx = tmp / f"{filename_stem}.ktx"
+            image.save(input_png, format="PNG")
 
-        if not result.success:
-            return KtxSingleResponse(success=False, summary=result.error or "KTX conversion failed")
+            result = ktx_convert_file(
+                input_png,
+                output_ktx,
+                preset=preset,
+                overwrite=True,
+                auto_align=auto_align,
+                auto_preset=auto_preset,
+                validate_quality=validate_quality,
+            )
 
-        summary_lines = [
-            f"Converted {filename_stem}.ktx in {result.duration_ms}ms",
-            f"PNG {result.size_input / 1024:.0f} KB -> KTX {result.size_output / 1024:.0f} KB",
-            f"Preset: {'auto' if auto_preset else preset}",
-        ]
-        if result.preprocessed and result.pre_size != result.final_size:
-            summary_lines.append(f"Aligned {result.pre_size} -> {result.final_size}")
-        if result.psnr is not None:
-            quality = f"PSNR {result.psnr:.1f} dB {result.quality_grade}"
-            if result.ssim is not None:
-                quality += f" / SSIM {result.ssim:.4f}"
-            summary_lines.append(quality)
+            if not result.success:
+                return KtxSingleResponse(success=False, summary=result.error or "Falha na conversão KTX.")
 
-        return KtxSingleResponse(
-            success=True,
-            summary="\n".join(summary_lines),
-            filename=output_ktx.name,
-            ktx_b64=base64.b64encode(output_ktx.read_bytes()).decode("ascii"),
-            duration_ms=result.duration_ms,
-            size_input=result.size_input,
-            size_output=result.size_output,
-            ratio=result.ratio,
-        )
+            summary_lines = [
+                f"Convertido {filename_stem}.ktx em {result.duration_ms} ms",
+                f"PNG {result.size_input / 1024:.0f} KB -> KTX {result.size_output / 1024:.0f} KB",
+                f"Preset: {'auto' if auto_preset else preset}",
+            ]
+            if result.preprocessed and result.pre_size != result.final_size:
+                summary_lines.append(f"Alinhado {result.pre_size} -> {result.final_size}")
+            if result.psnr is not None:
+                quality = f"PSNR {result.psnr:.1f} dB {result.quality_grade}"
+                if result.ssim is not None:
+                    quality += f" / SSIM {result.ssim:.4f}"
+                summary_lines.append(quality)
+
+            return KtxSingleResponse(
+                success=True,
+                summary="\n".join(summary_lines),
+                filename=output_ktx.name,
+                ktx_b64=base64.b64encode(output_ktx.read_bytes()).decode("ascii"),
+                duration_ms=result.duration_ms,
+                size_input=result.size_input,
+                size_output=result.size_output,
+                ratio=result.ratio,
+            )
+
+    return await run_in_threadpool(work)
 
 
 @app.post("/api/ktx/batch", response_model=KtxBatchResponse)
@@ -752,36 +756,39 @@ async def ktx_batch(
     if ktx_find_toktx() is None:
         return KtxBatchResponse(success=False, summary=KTX_MISSING_MESSAGE)
 
-    folder = Path(folder_path).expanduser().resolve()
-    out = Path(output_path).expanduser().resolve()
+    def work() -> KtxBatchResponse:
+        folder = Path(folder_path).expanduser().resolve()
+        out = Path(output_path).expanduser().resolve()
 
-    if not folder.exists() or not folder.is_dir():
-        return KtxBatchResponse(success=False, summary=f"Input folder not found: {folder}")
+        if not folder.exists() or not folder.is_dir():
+            return KtxBatchResponse(success=False, summary=f"Pasta de entrada não encontrada: {folder}")
 
-    images = ktx_collect_images(folder, recursive=recursive)
-    if not images:
-        return KtxBatchResponse(success=False, summary=f"No PNG/JPG images found in {folder}")
+        images = ktx_collect_images(folder, recursive=recursive)
+        if not images:
+            return KtxBatchResponse(success=False, summary=f"Nenhuma imagem PNG/JPG em {folder}")
 
-    workers = max(1, min(int(max_workers), 16))
-    results = ktx_batch_convert(
-        images,
-        out,
-        preset=preset,
-        base_dir=None if flatten else folder,
-        overwrite=True,
-        auto_align=auto_align,
-        auto_preset=auto_preset,
-        validate_quality=validate_quality,
-        max_workers=workers,
-    )
-    fail_count = sum(1 for result in results if not result.success)
+        workers = max(1, min(int(max_workers), 16))
+        results = ktx_batch_convert(
+            images,
+            out,
+            preset=preset,
+            base_dir=None if flatten else folder,
+            overwrite=True,
+            auto_align=auto_align,
+            auto_preset=auto_preset,
+            validate_quality=validate_quality,
+            max_workers=workers,
+        )
+        fail_count = sum(1 for result in results if not result.success)
 
-    return KtxBatchResponse(
-        success=fail_count == 0,
-        summary=ktx_summarize(results),
-        input_count=len(images),
-        output_dir=str(out),
-    )
+        return KtxBatchResponse(
+            success=fail_count == 0,
+            summary=ktx_summarize(results),
+            input_count=len(images),
+            output_dir=str(out),
+        )
+
+    return await run_in_threadpool(work)
 
 
 @app.post("/api/batch/pipeline", response_model=BatchPipelineResponse)
@@ -971,33 +978,36 @@ async def ktx_orientation(
     stem = Path(output_name or file.filename or "texture").stem or "texture"
     filename = _safe_download_name(stem, "texture", ".ktx")
 
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp = Path(tmpdir)
-            input_ktx = tmp / "input.ktx"
-            input_ktx.write_bytes(raw)
-            patch_orientation(input_ktx)
-            patched = input_ktx.read_bytes()
-    except Exception as exc:
-        return KtxPatchResponse(success=False, summary=f"KTX orientation patch failed: {exc}")
+    def work() -> KtxPatchResponse:
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                input_ktx = tmp / "input.ktx"
+                input_ktx.write_bytes(raw)
+                patch_orientation(input_ktx)
+                patched = input_ktx.read_bytes()
+        except Exception as exc:
+            return KtxPatchResponse(success=False, summary=f"Não consegui corrigir a orientação do KTX: {exc}")
 
-    saved_path = None
-    if output_path.strip():
-        out_dir = Path(output_path).expanduser().resolve()
-        out_dir.mkdir(parents=True, exist_ok=True)
-        saved = out_dir / filename
-        saved.write_bytes(patched)
-        saved_path = str(saved)
+        saved_path = None
+        if output_path.strip():
+            out_dir = Path(output_path).expanduser().resolve()
+            out_dir.mkdir(parents=True, exist_ok=True)
+            saved = out_dir / filename
+            saved.write_bytes(patched)
+            saved_path = str(saved)
 
-    return KtxPatchResponse(
-        success=True,
-        summary="KTXorientation=rd is present.",
-        filename=filename,
-        ktx_b64=base64.b64encode(patched).decode("ascii"),
-        saved_path=saved_path,
-        size_input=len(raw),
-        size_output=len(patched),
-    )
+        return KtxPatchResponse(
+            success=True,
+            summary="Orientação corrigida: a textura aparece na posição certa na cena 3D.",
+            filename=filename,
+            ktx_b64=base64.b64encode(patched).decode("ascii"),
+            saved_path=saved_path,
+            size_input=len(raw),
+            size_output=len(patched),
+        )
+
+    return await run_in_threadpool(work)
 
 
 @app.post("/api/ktx/portfolio", response_model=PortfolioKtxResponse)
@@ -1015,61 +1025,64 @@ async def portfolio_ktx(
     raw, image = await _read_upload_image(file)
     stem = Path(output_name or file.filename or "portfolio-texture").stem or "portfolio-texture"
     filename = _safe_download_name(stem, "portfolio-texture", ".ktx")
-    start = time.perf_counter()
 
-    try:
-        from alktx2 import encode_image_to_ktx2
+    def work() -> PortfolioKtxResponse:
+        start = time.perf_counter()
+        try:
+            from alktx2 import encode_image_to_ktx2
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp = Path(tmpdir)
-            aligned_png = tmp / "aligned.png"
-            output_ktx = tmp / filename
-            source_size, fitted_size = _fit_to_portfolio_canvas(image, aligned_png)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                aligned_png = tmp / "aligned.png"
+                output_ktx = tmp / filename
+                source_size, fitted_size = _fit_to_portfolio_canvas(image, aligned_png)
 
-            encode_image_to_ktx2(
-                str(aligned_png),
-                str(output_ktx),
-                codec="etc1s",
-                quality=255,
-                srgb=True,
-                mipmaps=False,
-                threads=0,
-                verbose=False,
-            )
-            patch_orientation(output_ktx)
-            ktx_bytes = output_ktx.read_bytes()
-    except Exception as exc:
-        return PortfolioKtxResponse(success=False, summary=f"Portfolio KTX conversion failed: {exc}")
+                encode_image_to_ktx2(
+                    str(aligned_png),
+                    str(output_ktx),
+                    codec="etc1s",
+                    quality=255,
+                    srgb=True,
+                    mipmaps=False,
+                    threads=0,
+                    verbose=False,
+                )
+                patch_orientation(output_ktx)
+                ktx_bytes = output_ktx.read_bytes()
+        except Exception as exc:
+            return PortfolioKtxResponse(success=False, summary=f"Falha ao gerar o Portfolio KTX: {exc}")
 
-    saved_path = None
-    if output_path.strip():
-        out_dir = Path(output_path).expanduser().resolve()
-        out_dir.mkdir(parents=True, exist_ok=True)
-        saved = out_dir / filename
-        saved.write_bytes(ktx_bytes)
-        saved_path = str(saved)
+        saved_path = None
+        if output_path.strip():
+            out_dir = Path(output_path).expanduser().resolve()
+            out_dir.mkdir(parents=True, exist_ok=True)
+            saved = out_dir / filename
+            saved.write_bytes(ktx_bytes)
+            saved_path = str(saved)
 
-    duration_ms = int((time.perf_counter() - start) * 1000)
-    summary = "\n".join(
-        [
-            f"Fit {source_size[0]}x{source_size[1]} -> {fitted_size[0]}x{fitted_size[1]}",
-            f"Canvas {PORTFOLIO_KTX_WIDTH}x{PORTFOLIO_KTX_HEIGHT}, ETC1S q255, sRGB, no mipmaps",
-            f"PNG {len(raw) / 1024:.0f} KB -> KTX {len(ktx_bytes) / 1024:.0f} KB",
-        ]
-    )
-    if saved_path:
-        summary += f"\nSaved: {saved_path}"
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        summary = "\n".join(
+            [
+                f"Ajustado {source_size[0]}x{source_size[1]} -> {fitted_size[0]}x{fitted_size[1]}",
+                f"Tela {PORTFOLIO_KTX_WIDTH}x{PORTFOLIO_KTX_HEIGHT}, ETC1S q255, sRGB, sem mipmaps",
+                f"PNG {len(raw) / 1024:.0f} KB -> KTX {len(ktx_bytes) / 1024:.0f} KB",
+            ]
+        )
+        if saved_path:
+            summary += f"\nSalvo em: {saved_path}"
 
-    return PortfolioKtxResponse(
-        success=True,
-        summary=summary,
-        filename=filename,
-        ktx_b64=base64.b64encode(ktx_bytes).decode("ascii"),
-        saved_path=saved_path,
-        duration_ms=duration_ms,
-        size_input=len(raw),
-        size_output=len(ktx_bytes),
-    )
+        return PortfolioKtxResponse(
+            success=True,
+            summary=summary,
+            filename=filename,
+            ktx_b64=base64.b64encode(ktx_bytes).decode("ascii"),
+            saved_path=saved_path,
+            duration_ms=duration_ms,
+            size_input=len(raw),
+            size_output=len(ktx_bytes),
+        )
+
+    return await run_in_threadpool(work)
 
 
 # ────────── Transcribe ──────────
@@ -1361,7 +1374,8 @@ class PackageInstallStarted(BaseModel):
 
 @app.get("/api/packages", response_model=PackagesResponse)
 async def packages_list() -> PackagesResponse:
-    return PackagesResponse(packages=[PackageInfo(**item) for item in pkg_list_packages()])
+    items = await run_in_threadpool(pkg_list_packages)
+    return PackagesResponse(packages=[PackageInfo(**item) for item in items])
 
 
 @app.post("/api/packages/{package_id}/install", response_model=PackageInstallStarted)
@@ -1510,7 +1524,8 @@ async def editor_import(
     if not raw:
         raise HTTPException(status_code=400, detail="Arquivo vazio.")
     name = (file.filename or "").lower()
-    try:
+
+    def work() -> dict:
         if name.endswith(".pdf"):
             return imgpdf_editor.extract_elements(raw, render_bg=render_bg)
         # imagem: vira 1 PDF de 1 pagina e extrai (sem texto -> 0 elementos, mas serve de fundo)
@@ -1519,10 +1534,13 @@ async def editor_import(
         pdf_bytes = doc.convert_to_pdf()
         doc.close()
         return imgpdf_editor.extract_elements(pdf_bytes, render_bg=True)
+
+    try:
+        return await run_in_threadpool(work)
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Nao consegui ler o arquivo: {exc}")
+        raise HTTPException(status_code=400, detail=f"Não consegui ler o arquivo: {exc}")
 
 
 @app.post("/api/editor/export")
@@ -1530,7 +1548,7 @@ async def editor_export(payload: dict = Body(...)) -> Response:
     if not isinstance(payload, dict) or not payload.get("elements"):
         raise HTTPException(status_code=400, detail="Envie elements no corpo.")
     try:
-        data = imgpdf_editor.build_pdf(payload)
+        data = await run_in_threadpool(imgpdf_editor.build_pdf, payload)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Falha ao gerar PDF: {exc}")
     return Response(
@@ -1546,7 +1564,7 @@ async def editor_render_html(payload: dict = Body(...)) -> Response:
     if not html or not isinstance(html, str):
         raise HTTPException(status_code=400, detail="Envie 'html' no corpo.")
     try:
-        data = imgpdf_editor.render_html_pdf(html)
+        data = await run_in_threadpool(imgpdf_editor.render_html_pdf, html)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return Response(
@@ -1561,7 +1579,8 @@ async def editor_render_png(payload: dict = Body(...)) -> Response:
     if not isinstance(payload, dict) or not payload.get("html"):
         raise HTTPException(status_code=400, detail="Envie 'html' no corpo.")
     try:
-        data = imgpdf_editor.render_html_png(
+        data = await run_in_threadpool(
+            imgpdf_editor.render_html_png,
             payload["html"],
             float(payload.get("w") or 595.276),
             float(payload.get("h") or 841.89),

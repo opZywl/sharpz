@@ -560,7 +560,11 @@ def stream_job(job_id: str):
         yield _sse({"type": "done", "status": job.status, "returncode": job.returncode})
         return
     while True:
-        item = sub.get()
+        try:
+            item = sub.get(timeout=15)
+        except queue.Empty:
+            yield ": ping\n\n"
+            continue
         if item is _SENTINEL:
             yield _sse({"type": "done", "status": job.status, "returncode": job.returncode})
             return

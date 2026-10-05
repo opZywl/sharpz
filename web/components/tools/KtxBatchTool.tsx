@@ -78,18 +78,18 @@ export function KtxBatchTool() {
                 <Panel title="Batch KTX" subtitle="Use o caminho completo das pastas neste computador." icon={FolderSync}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
-                            <TextField label="Pasta input" value={ktxBatch.folderPath} onChange={(folderPath) => setKtxBatch((current) => ({ ...current, folderPath }))} placeholder="C:/Users/zywl/WebstormProjects/portfolio/yzy/static/..." />
-                            <TextField label="Pasta output" value={ktxBatch.outputPath} onChange={(outputPath) => setKtxBatch((current) => ({ ...current, outputPath }))} placeholder="C:/caminho/para/saida-ktx" />
+                            <TextField label="Pasta de entrada" value={ktxBatch.folderPath} onChange={(folderPath) => setKtxBatch((current) => ({ ...current, folderPath }))} placeholder="C:/caminho/para/imagens" />
+                            <TextField label="Pasta de saída" value={ktxBatch.outputPath} onChange={(outputPath) => setKtxBatch((current) => ({ ...current, outputPath }))} placeholder="C:/caminho/para/saida-ktx" />
                         </div>
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             <SelectField label="Preset" value={ktxBatch.preset} options={ktxPresetOptions} onChange={(preset) => setKtxBatch((current) => ({ ...current, preset }))} />
-                            <Slider label="Workers" value={ktxBatch.maxWorkers} min={1} max={16} step={1} onChange={(maxWorkers) => setKtxBatch((current) => ({ ...current, maxWorkers }))} />
+                            <Slider label="Conversões simultâneas" value={ktxBatch.maxWorkers} min={1} max={16} step={1} onChange={(maxWorkers) => setKtxBatch((current) => ({ ...current, maxWorkers }))} />
                             <CheckboxRow checked={ktxBatch.recursive} onChange={(recursive) => setKtxBatch((current) => ({ ...current, recursive }))} label="Recursivo" />
-                            <CheckboxRow checked={ktxBatch.flatten} onChange={(flatten) => setKtxBatch((current) => ({ ...current, flatten }))} label="Flatten output" />
+                            <CheckboxRow checked={ktxBatch.flatten} onChange={(flatten) => setKtxBatch((current) => ({ ...current, flatten }))} label="Sem subpastas na saída" />
                         </div>
                         <div className="grid gap-3 md:grid-cols-3">
-                            <CheckboxRow checked={ktxBatch.autoAlign} onChange={(autoAlign) => setKtxBatch((current) => ({ ...current, autoAlign }))} label="Auto-align" />
-                            <CheckboxRow checked={ktxBatch.autoPreset} onChange={(autoPreset) => setKtxBatch((current) => ({ ...current, autoPreset }))} label="Auto-preset" />
+                            <CheckboxRow checked={ktxBatch.autoAlign} onChange={(autoAlign) => setKtxBatch((current) => ({ ...current, autoAlign }))} label="Auto-alinhar" />
+                            <CheckboxRow checked={ktxBatch.autoPreset} onChange={(autoPreset) => setKtxBatch((current) => ({ ...current, autoPreset }))} label="Preset automático" />
                             <CheckboxRow checked={ktxBatch.validateQuality} onChange={(validateQuality) => setKtxBatch((current) => ({ ...current, validateQuality }))} label="Validar PSNR" />
                         </div>
                         <Button onClick={runKtxBatch} disabled={busy} size="lg" className="w-full">
@@ -101,13 +101,13 @@ export function KtxBatchTool() {
             </motion.div>
 
             <motion.div {...cardEnter}>
-                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de pagina." icon={Activity}>
+                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de página." icon={Activity}>
                     {result ? (
                         <div className="space-y-4">
                             <div className="grid gap-3 md:grid-cols-3">
                                 <Metric label="Status" value={result.success ? "OK" : "Falha"} />
                                 <Metric label="Imagens" value={String(result.input_count)} />
-                                <Metric label="Output" value={result.output_dir ? "gravado" : "n/a"} helper={result.output_dir ?? undefined} />
+                                <Metric label="Saída" value={result.output_dir ? "gravado" : "n/a"} helper={result.output_dir ?? undefined} />
                             </div>
                             <pre className="app-codeblock max-h-[460px] overflow-auto rounded-xl p-4 text-sm leading-6">
                                 {result.summary}

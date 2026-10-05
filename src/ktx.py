@@ -376,7 +376,7 @@ def convert_file(
     except subprocess.TimeoutExpired:
         return ConversionResult(
             input_path, output_path, False,
-            size_input=size_input, error="toktx timeout (>5min -uastc q4 em imagem gigante?)",
+            size_input=size_input, error="A conversão KTX passou de 5 min (imagem grande demais para este preset?)",
             preprocessed=preprocessed, pre_size=pre_size, final_size=final_size,
         )
     except Exception as e:
@@ -401,7 +401,7 @@ def convert_file(
         return ConversionResult(
             input_path, output_path, False,
             size_input=size_input, duration_ms=duration_ms,
-            error=f"toktx falhou (exit {proc.returncode}):\n{(proc.stderr or proc.stdout)[:500]}",
+            error=f"A conversão KTX falhou (código {proc.returncode}):\n{(proc.stderr or proc.stdout)[:500]}",
             encoder_log=encoder_log,
             preprocessed=preprocessed, pre_size=pre_size, final_size=final_size,
         )
@@ -410,7 +410,7 @@ def convert_file(
         return ConversionResult(
             input_path, output_path, False,
             size_input=size_input, duration_ms=duration_ms,
-            error=f"toktx retornou OK mas output nao foi criado: {output_path}",
+            error=f"A conversão KTX terminou, mas o arquivo não foi criado: {output_path}",
             encoder_log=encoder_log,
             preprocessed=preprocessed, pre_size=pre_size, final_size=final_size,
         )
@@ -522,7 +522,7 @@ def batch_convert(
             except Exception as e:
                 result = ConversionResult(
                     inputs_list[idx], _resolve_output(inputs_list[idx]),
-                    False, error=f"thread crashed: {e}",
+                    False, error=f"falha inesperada: {e}",
                 )
             results[idx] = result
             completed += 1
@@ -554,7 +554,7 @@ def summarize(results: list[ConversionResult]) -> str:
     ]
     if ok:
         lines.append(
-            f"size: {total_in / 1024 / 1024:.1f} MB -> {total_out / 1024 / 1024:.1f} MB  "
+            f"tamanho: {total_in / 1024 / 1024:.1f} MB -> {total_out / 1024 / 1024:.1f} MB  "
             f"({ratio:.1f}x menor, economia {saved_mb:.1f} MB)"
         )
         lines.append(f"tempo total: {total_ms / 1000:.1f}s ({total_ms // max(len(ok), 1)}ms/img medio)")
@@ -570,7 +570,7 @@ def summarize(results: list[ConversionResult]) -> str:
         # Pre-processing stats
         pre_count = sum(1 for r in ok if r.preprocessed)
         if pre_count:
-            lines.append(f"pre-aligned: {pre_count} imagem(ns) padded pra multiplo de 4")
+            lines.append(f"alinhadas: {pre_count} imagem(ns) completadas para múltiplo de 4")
 
     if fail:
         lines.append("\nfalhas:")

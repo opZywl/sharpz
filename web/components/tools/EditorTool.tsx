@@ -380,7 +380,7 @@ export function EditorTool() {
                     <div ref={wrapRef}
                         onPointerDown={() => { setSelected([]); setEditing(null); setMenu(""); setCtx(null) }}
                         onContextMenu={(e) => e.preventDefault()}
-                        style={{ position: "relative", flex: "0 0 auto", margin: "auto", width: Wpx, height: Hpx, background: pageBg, boxShadow: "0 4px 24px rgba(0,0,0,.2)", borderRadius: 4, backgroundImage: bg && showBg ? `url(${bg})` : undefined, backgroundSize: "100% 100%", backgroundRepeat: "no-repeat" }}
+                        style={{ position: "relative", flex: "0 0 auto", margin: "auto", width: Wpx, height: Hpx, backgroundColor: pageBg, boxShadow: "0 4px 24px rgba(0,0,0,.2)", borderRadius: 4, backgroundImage: bg && showBg ? `url(${bg})` : undefined, backgroundSize: "100% 100%", backgroundRepeat: "no-repeat" }}
                     >
                         {guide.x != null ? <div style={{ position: "absolute", left: guide.x * scale, top: 0, width: 1, height: Hpx, background: "#ec4899", zIndex: 99 }} /> : null}
                         {guide.y != null ? <div style={{ position: "absolute", top: guide.y * scale, left: 0, height: 1, width: Wpx, background: "#ec4899", zIndex: 99 }} /> : null}

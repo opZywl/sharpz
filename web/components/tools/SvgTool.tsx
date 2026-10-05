@@ -62,7 +62,7 @@ export function SvgTool() {
 
     async function runSvg() {
         if (!file) {
-            setError("Carregue uma imagem antes de executar este modulo.")
+            setError("Carregue uma imagem antes de executar este módulo.")
             return
         }
         setBusy(true)
@@ -113,21 +113,21 @@ export function SvgTool() {
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             <SelectField label="Cor" value={svg.colorMode} options={colorModeOptions} onChange={(colorMode) => setSvg((current) => ({ ...current, colorMode }))} />
                             <SelectField label="Hierarquia" value={svg.hierarchical} options={hierarchicalOptions} onChange={(hierarchical) => setSvg((current) => ({ ...current, hierarchical }))} />
-                            <SelectField label="Path" value={svg.pathMode} options={pathModeOptions} onChange={(pathMode) => setSvg((current) => ({ ...current, pathMode }))} />
+                            <SelectField label="Traçado" value={svg.pathMode} options={pathModeOptions} onChange={(pathMode) => setSvg((current) => ({ ...current, pathMode }))} />
                             <ColorField label="Fundo" value={svg.flattenColor} onChange={(flattenColor) => setSvg((current) => ({ ...current, flattenColor }))} />
                         </div>
                         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                            <Slider label="Upscale" value={svg.upscale} min={1} max={3} step={0.25} onChange={(upscale) => setSvg((current) => ({ ...current, upscale }))} />
-                            <Slider label="Speckle" value={svg.filterSpeckle} min={0} max={20} step={1} onChange={(filterSpeckle) => setSvg((current) => ({ ...current, filterSpeckle }))} />
-                            <Slider label="Color precision" value={svg.colorPrecision} min={1} max={8} step={1} onChange={(colorPrecision) => setSvg((current) => ({ ...current, colorPrecision }))} />
-                            <Slider label="Path precision" value={svg.pathPrecision} min={1} max={10} step={1} onChange={(pathPrecision) => setSvg((current) => ({ ...current, pathPrecision }))} />
+                            <Slider label="Ampliar antes" value={svg.upscale} min={1} max={3} step={0.25} onChange={(upscale) => setSvg((current) => ({ ...current, upscale }))} />
+                            <Slider label="Remover manchas" value={svg.filterSpeckle} min={0} max={20} step={1} onChange={(filterSpeckle) => setSvg((current) => ({ ...current, filterSpeckle }))} />
+                            <Slider label="Precisão de cor" value={svg.colorPrecision} min={1} max={8} step={1} onChange={(colorPrecision) => setSvg((current) => ({ ...current, colorPrecision }))} />
+                            <Slider label="Precisão do traçado" value={svg.pathPrecision} min={1} max={10} step={1} onChange={(pathPrecision) => setSvg((current) => ({ ...current, pathPrecision }))} />
                         </div>
                         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                            <Slider label="Layer diff" value={svg.layerDifference} min={0} max={256} step={1} onChange={(layerDifference) => setSvg((current) => ({ ...current, layerDifference }))} />
-                            <Slider label="Corner" value={svg.cornerThreshold} min={0} max={180} step={1} onChange={(cornerThreshold) => setSvg((current) => ({ ...current, cornerThreshold }))} />
-                            <Slider label="Length" value={svg.lengthThreshold} min={0} max={20} step={0.5} onChange={(lengthThreshold) => setSvg((current) => ({ ...current, lengthThreshold }))} />
-                            <Slider label="Splice" value={svg.spliceThreshold} min={0} max={180} step={1} onChange={(spliceThreshold) => setSvg((current) => ({ ...current, spliceThreshold }))} />
-                            <Slider label="Iterations" value={svg.maxIterations} min={1} max={20} step={1} onChange={(maxIterations) => setSvg((current) => ({ ...current, maxIterations }))} />
+                            <Slider label="Diferença entre camadas" value={svg.layerDifference} min={0} max={256} step={1} onChange={(layerDifference) => setSvg((current) => ({ ...current, layerDifference }))} />
+                            <Slider label="Cantos" value={svg.cornerThreshold} min={0} max={180} step={1} onChange={(cornerThreshold) => setSvg((current) => ({ ...current, cornerThreshold }))} />
+                            <Slider label="Comprimento mínimo" value={svg.lengthThreshold} min={0} max={20} step={0.5} onChange={(lengthThreshold) => setSvg((current) => ({ ...current, lengthThreshold }))} />
+                            <Slider label="Emenda" value={svg.spliceThreshold} min={0} max={180} step={1} onChange={(spliceThreshold) => setSvg((current) => ({ ...current, spliceThreshold }))} />
+                            <Slider label="Iterações" value={svg.maxIterations} min={1} max={20} step={1} onChange={(maxIterations) => setSvg((current) => ({ ...current, maxIterations }))} />
                         </div>
                         <Button onClick={runSvg} disabled={busy} size="lg" className="w-full">
                             {busy ? <Loader2 className="size-4 animate-spin" /> : <FileCode2 className="size-4" />}
@@ -138,13 +138,13 @@ export function SvgTool() {
             </motion.div>
 
             <motion.div {...cardEnter}>
-                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de pagina." icon={Activity}>
+                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de página." icon={Activity}>
                     {result ? (
                         <div className="space-y-4">
                             <div className="grid gap-3 md:grid-cols-3">
                                 <Metric label="Tempo" value={`${(result.elapsed_ms / 1000).toFixed(2)}s`} />
-                                <Metric label="SVG bg" value={formatBytes(result.svg_with_bg_bytes)} />
-                                <Metric label="SVG clean" value={formatBytes(result.svg_clean_bytes)} />
+                                <Metric label="SVG com fundo" value={formatBytes(result.svg_with_bg_bytes)} />
+                                <Metric label="SVG transparente" value={formatBytes(result.svg_clean_bytes)} />
                             </div>
                             <div className="grid gap-4 md:grid-cols-2">
                                 <PreviewTile title="SVG com fundo" subtitle={`${result.image_width} x ${result.image_height}`} src={pngData(result.svg_with_bg_preview_b64)} downloadHref={svgData(result.svg_with_bg)} downloadName="vectorized.svg" />
@@ -152,7 +152,7 @@ export function SvgTool() {
                             </div>
                         </div>
                     ) : (
-                        <EmptyState text="Gere um SVG para receber preview e arquivos baixaveis." />
+                        <EmptyState text="Gere um SVG para receber preview e arquivos baixáveis." />
                     )}
                 </Panel>
             </motion.div>

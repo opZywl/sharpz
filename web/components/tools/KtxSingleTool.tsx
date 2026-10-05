@@ -50,7 +50,7 @@ export function KtxSingleTool() {
 
     async function runKtxSingle() {
         if (!file) {
-            setError("Carregue uma imagem antes de executar este modulo.")
+            setError("Carregue uma imagem antes de executar este módulo.")
             return
         }
         setBusy(true)
@@ -89,12 +89,12 @@ export function KtxSingleTool() {
                     <Dropzone file={file} previewUrl={previewUrl} onChange={setFile} />
                 </Panel>
 
-                <Panel title="KTX single" subtitle="Upload unico com presets de qualidade maxima." icon={Box}>
+                <Panel title="Converter para KTX" subtitle="Uma imagem por vez, com presets de qualidade." icon={Box}>
                     <div className="grid gap-4">
                         <SelectField label="Preset" value={ktxSingle.preset} options={ktxPresetOptions} onChange={(preset) => setKtxSingle((current) => ({ ...current, preset }))} />
                         <div className="grid gap-3 md:grid-cols-3">
-                            <CheckboxRow checked={ktxSingle.autoAlign} onChange={(autoAlign) => setKtxSingle((current) => ({ ...current, autoAlign }))} label="Auto-align" helper="Pad para multiplo de 4." />
-                            <CheckboxRow checked={ktxSingle.autoPreset} onChange={(autoPreset) => setKtxSingle((current) => ({ ...current, autoPreset }))} label="Auto-preset" helper="Alpha usa ultra_rgba." />
+                            <CheckboxRow checked={ktxSingle.autoAlign} onChange={(autoAlign) => setKtxSingle((current) => ({ ...current, autoAlign }))} label="Auto-alinhar" helper="Completa até múltiplo de 4." />
+                            <CheckboxRow checked={ktxSingle.autoPreset} onChange={(autoPreset) => setKtxSingle((current) => ({ ...current, autoPreset }))} label="Preset automático" helper="Alpha usa ultra_rgba." />
                             <CheckboxRow checked={ktxSingle.validateQuality} onChange={(validateQuality) => setKtxSingle((current) => ({ ...current, validateQuality }))} label="Validar PSNR" helper="Compara com o original (mais lento)." />
                         </div>
                         {toktxFound === false ? (
@@ -111,7 +111,7 @@ export function KtxSingleTool() {
             </motion.div>
 
             <motion.div {...cardEnter}>
-                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de pagina." icon={Activity}>
+                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de página." icon={Activity}>
                     {result ? (
                         <div className="space-y-4">
                             <div className="grid gap-3 md:grid-cols-3">

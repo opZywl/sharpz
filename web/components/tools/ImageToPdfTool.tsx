@@ -73,6 +73,19 @@ const STAGE_LABELS: Record<string, string> = {
     error: "erro",
 }
 
+const ENGINE_LABELS: Record<string, string> = {
+    vision: "IA de visão",
+    tesseract: "Tesseract",
+    nenhum: "Nenhum",
+}
+
+const DEGRADED_LABELS: Record<string, string> = {
+    vision: "IA de visão falhou",
+    "vision-vazio": "IA de visão não leu texto",
+    "tesseract-vazio": "Tesseract não leu texto",
+    "sem-ocr": "sem leitura de texto",
+}
+
 const LOG_TONE: Record<string, string> = {
     ok: "text-emerald-600 dark:text-emerald-300",
     warn: "text-amber-600 dark:text-amber-300",
@@ -304,7 +317,7 @@ export function ImageToPdfTool() {
                             label="Caminho local (alternativo)"
                             value={localPath}
                             onChange={setLocalPath}
-                            placeholder="C:/Users/zywl/Downloads/curriculo.png"
+                            placeholder="C:/caminho/para/imagem.png"
                         />
                         {previewUrl ? (
                             <div className="preview-card overflow-hidden rounded-xl">
@@ -358,7 +371,7 @@ export function ImageToPdfTool() {
 
                         <div className="grid gap-3 md:grid-cols-2">
                             <TextField label="Nome do PDF (opcional)" value={outputName} onChange={setOutputName} placeholder="auto (nome da imagem)" />
-                            <TextField label="Pasta de saida (opcional)" value={outputDir} onChange={setOutputDir} placeholder="C:/Users/zywl/Downloads" />
+                            <TextField label="Pasta de saida (opcional)" value={outputDir} onChange={setOutputDir} placeholder="C:/caminho/para/pasta" />
                         </div>
                         <CheckboxRow checked={openFolderOpt} onChange={setOpenFolderOpt} label="Abrir pasta ao terminar" />
 
@@ -412,20 +425,20 @@ export function ImageToPdfTool() {
 
                             {degraded.length ? (
                                 <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
-                                    Degradado: {degraded.join(", ")}. O PDF foi gerado identico a imagem mesmo assim.
+                                    Etapas com falha: {degraded.map((item) => DEGRADED_LABELS[item] ?? item).join(", ")}. O PDF foi gerado idêntico à imagem mesmo assim.
                                 </div>
                             ) : null}
 
                             {status === "done" && manifest ? (
                                 <>
                                     <div className="grid gap-3 md:grid-cols-4">
-                                        <Metric label="Motor" value={manifest.engine} />
+                                        <Metric label="Motor" value={ENGINE_LABELS[manifest.engine] ?? manifest.engine} />
                                         <Metric label="Blocos" value={String(manifest.blocks)} />
                                         <Metric label="Caracteres" value={report ? String(report.chars) : "0"} helper={report ? `${report.hyphens} hifens` : undefined} />
                                         <Metric
                                             label="Camada"
-                                            value={report?.clean ? "limpa" : "com glitch"}
-                                            helper={report ? `pagina ${report.page_pt?.join(" x ")} pt` : undefined}
+                                            value={report?.clean ? "limpa" : "com caracteres estranhos"}
+                                            helper={report ? `página ${report.page_pt?.join(" x ")} pt` : undefined}
                                         />
                                     </div>
 

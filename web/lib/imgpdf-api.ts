@@ -82,6 +82,14 @@ export function openImgPdfStream(jobId: string, onEvent: (event: ImgPdfEvent) =>
             // ignora linhas que nao sao JSON valido
         }
     }
+    source.onerror = () => {
+        if (source.readyState === EventSource.CLOSED) {
+            onEvent({
+                type: "error",
+                message: "A conexão com o servidor caiu e a conversão foi interrompida. Confira se o Sharpz está rodando e tente de novo.",
+            })
+        }
+    }
     return source
 }
 

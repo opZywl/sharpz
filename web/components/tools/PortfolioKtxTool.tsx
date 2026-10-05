@@ -43,7 +43,7 @@ export function PortfolioKtxTool() {
 
     async function runPortfolioKtx() {
         if (!file) {
-            setError("Carregue uma imagem antes de executar este modulo.")
+            setError("Carregue uma imagem antes de executar este módulo.")
             return
         }
         setBusy(true)
@@ -80,7 +80,7 @@ export function PortfolioKtxTool() {
                     <Dropzone file={file} previewUrl={previewUrl} onChange={setFile} />
                 </Panel>
 
-                <Panel title="Portfolio KTX" subtitle="Canvas fixo 960x540, ETC1S q255 e orientation patch." icon={PackageCheck}>
+                <Panel title="Portfolio KTX" subtitle="Tela fixa 960x540, ETC1S q255 e orientação corrigida." icon={PackageCheck}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
                             <TextField label="Nome output" value={portfolioKtx.outputName} onChange={(outputName) => setPortfolioKtx((current) => ({ ...current, outputName }))} placeholder="liquid-launcher-1.ktx" />
@@ -92,9 +92,9 @@ export function PortfolioKtxTool() {
                             </div>
                         ) : null}
                         <div className="grid gap-3 md:grid-cols-3">
-                            <Metric label="Canvas" value="960 x 540" helper="portfolio 3D" />
+                            <Metric label="Tela" value="960 x 540" helper="portfolio 3D" />
                             <Metric label="Codec" value="ETC1S" helper="q255 sRGB" />
-                            <Metric label="Patch" value="rd" helper="KTXorientation" />
+                            <Metric label="Orientação" value="Corrigida" helper="pronta para cena 3D" />
                         </div>
                         <Button onClick={runPortfolioKtx} disabled={busy} size="lg" className="w-full">
                             {busy ? <Loader2 className="size-4 animate-spin" /> : <PackageCheck className="size-4" />}
@@ -105,12 +105,12 @@ export function PortfolioKtxTool() {
             </motion.div>
 
             <motion.div {...cardEnter}>
-                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de pagina." icon={Activity}>
+                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de página." icon={Activity}>
                     {result ? (
                         <div className="space-y-4">
                             <div className="grid gap-3 md:grid-cols-3">
                                 <Metric label="Status" value={result.success ? "OK" : "Falha"} />
-                                <Metric label="Canvas" value={`${result.target_width} x ${result.target_height}`} />
+                                <Metric label="Tela" value={`${result.target_width} x ${result.target_height}`} />
                                 <Metric label="Saida" value={formatBytes(result.size_output)} helper={result.saved_path ?? undefined} />
                             </div>
                             <pre className="app-codeblock max-h-64 overflow-auto rounded-xl p-4 text-sm leading-6">

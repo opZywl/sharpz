@@ -29,7 +29,7 @@ export function KtxOrientationTool() {
 
     async function runKtxPatch() {
         if (!ktxFile) {
-            setError("Carregue um arquivo .ktx/.ktx2 antes de aplicar o patch.")
+            setError("Carregue um arquivo .ktx/.ktx2 antes de corrigir a orientação.")
             return
         }
         setBusy(true)
@@ -45,7 +45,7 @@ export function KtxOrientationTool() {
             setResult(data)
             if (!data.success) setError(data.summary)
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Erro inesperado no patch KTX.")
+            setError(err instanceof Error ? err.message : "Erro inesperado ao corrigir o KTX.")
         } finally {
             setBusy(false)
         }
@@ -62,25 +62,25 @@ export function KtxOrientationTool() {
             ) : null}
 
             <motion.div {...cardEnter} className="grid gap-4 xl:grid-cols-[minmax(290px,0.72fr)_minmax(0,1.28fr)]">
-                <Panel title="Arquivo KTX" subtitle="Aceita .ktx ou .ktx2 e devolve o arquivo patchado." icon={Archive}>
+                <Panel title="Arquivo KTX" subtitle="Aceita .ktx ou .ktx2 e devolve o arquivo corrigido." icon={Archive}>
                     <FileField file={ktxFile} onChange={setKtxFile} accept=".ktx,.ktx2,application/octet-stream" label="Escolher KTX" helper="Textura .ktx ou .ktx2" />
                 </Panel>
-                <Panel title="Orientation patch" subtitle="Garante a orientação correta da textura na cena 3D." icon={ShieldCheck}>
+                <Panel title="Corrigir orientação" subtitle="Garante a orientação correta da textura na cena 3D." icon={ShieldCheck}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
-                            <TextField label="Nome output" value={ktxPatch.outputName} onChange={(outputName) => setKtxPatch((current) => ({ ...current, outputName }))} placeholder="texture.ktx" />
-                            <TextField label="Salvar tambem em" value={ktxPatch.outputPath} onChange={(outputPath) => setKtxPatch((current) => ({ ...current, outputPath }))} placeholder="C:/Users/zywl/WebstormProjects/portfolio/yzy/static/projects/images" />
+                            <TextField label="Nome do arquivo" value={ktxPatch.outputName} onChange={(outputName) => setKtxPatch((current) => ({ ...current, outputName }))} placeholder="texture.ktx" />
+                            <TextField label="Salvar tambem em" value={ktxPatch.outputPath} onChange={(outputPath) => setKtxPatch((current) => ({ ...current, outputPath }))} placeholder="C:/caminho/para/pasta" />
                         </div>
                         <Button onClick={runKtxPatch} disabled={busy} size="lg" className="w-full">
                             {busy ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
-                            Aplicar patch
+                            Corrigir orientação
                         </Button>
                     </div>
                 </Panel>
             </motion.div>
 
             <motion.div {...cardEnter}>
-                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de pagina." icon={Activity}>
+                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de página." icon={Activity}>
                     {result ? (
                         <div className="space-y-4">
                             <div className="grid gap-3 md:grid-cols-3">
@@ -101,7 +101,7 @@ export function KtxOrientationTool() {
                             ) : null}
                         </div>
                     ) : (
-                        <EmptyState text="Aplique o orientation patch para receber o KTX atualizado." />
+                        <EmptyState text="Corrija a orientação para receber o KTX atualizado." />
                     )}
                 </Panel>
             </motion.div>

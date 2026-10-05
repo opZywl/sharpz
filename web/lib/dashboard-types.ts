@@ -126,24 +126,29 @@ export const DEFAULT_KTX_PRESET = "ultra"
 
 export const methodOptions: Array<{ value: Method; label: string }> = [
     { value: "auto", label: "Auto" },
-    { value: "luma_dark", label: "Luma dark" },
-    { value: "luma_light", label: "Luma light" },
-    { value: "ai", label: "AI" },
-    { value: "none", label: "Sem remocao" },
+    { value: "luma_dark", label: "Fundo escuro (luma)" },
+    { value: "luma_light", label: "Fundo claro (luma)" },
+    { value: "ai", label: "IA" },
+    { value: "none", label: "Sem remoção" },
 ]
 
+export function methodLabel(method?: string | null) {
+    if (method === "no_bg_removal") return "Sem remover fundo"
+    return methodOptions.find((option) => option.value === method)?.label ?? method ?? ""
+}
+
 export const colorModeOptions: Array<{ value: ColorMode; label: string }> = [
-    { value: "color", label: "Color" },
-    { value: "binary", label: "Binary" },
+    { value: "color", label: "Colorido" },
+    { value: "binary", label: "Preto e branco" },
 ]
 
 export const hierarchicalOptions: Array<{ value: Hierarchical; label: string }> = [
-    { value: "stacked", label: "Stacked" },
-    { value: "cutout", label: "Cutout" },
+    { value: "stacked", label: "Empilhado" },
+    { value: "cutout", label: "Recortado" },
 ]
 
 export const pathModeOptions: Array<{ value: PathMode; label: string }> = [
-    { value: "spline", label: "Spline" },
-    { value: "polygon", label: "Polygon" },
-    { value: "none", label: "None" },
+    { value: "spline", label: "Curvas" },
+    { value: "polygon", label: "Polígonos" },
+    { value: "none", label: "Pixels" },
 ]

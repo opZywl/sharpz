@@ -112,7 +112,11 @@ class JobStore:
             yield "data: " + json.dumps(_final_event(snapshot), ensure_ascii=False) + "\n\n"
             return
         while True:
-            event = events.get()
+            try:
+                event = events.get(timeout=15)
+            except queue.Empty:
+                yield ": ping\n\n"
+                continue
             if event is _SENTINEL:
                 break
             yield "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"

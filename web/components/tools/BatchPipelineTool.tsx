@@ -24,6 +24,7 @@ import {
     colorModeOptions,
     Hierarchical,
     Method,
+    methodLabel,
     methodOptions,
     PathMode,
 } from "@/lib/dashboard-types"
@@ -137,28 +138,28 @@ export function BatchPipelineTool() {
                 <Panel title="Batch Pipeline" subtitle="Processa uma pasta inteira de imagens. Use o caminho completo da pasta neste computador." icon={FolderOpen}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
-                            <TextField label="Input path" value={batchPipeline.inputPath} onChange={(inputPath) => setBatchPipeline((current) => ({ ...current, inputPath }))} placeholder="C:/caminho/para/imagens" />
-                            <TextField label="Output dir" value={batchPipeline.outputPath} onChange={(outputPath) => setBatchPipeline((current) => ({ ...current, outputPath }))} placeholder="C:/caminho/para/saida" />
+                            <TextField label="Pasta de entrada" value={batchPipeline.inputPath} onChange={(inputPath) => setBatchPipeline((current) => ({ ...current, inputPath }))} placeholder="C:/caminho/para/imagens" />
+                            <TextField label="Pasta de saída" value={batchPipeline.outputPath} onChange={(outputPath) => setBatchPipeline((current) => ({ ...current, outputPath }))} placeholder="C:/caminho/para/saida" />
                         </div>
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                            <SelectField label="Metodo" value={batchPipeline.method} options={methodOptions} onChange={(method) => setBatchPipeline((current) => ({ ...current, method }))} />
+                            <SelectField label="Método" value={batchPipeline.method} options={methodOptions} onChange={(method) => setBatchPipeline((current) => ({ ...current, method }))} />
                             <ModelField value={batchPipeline.model ?? defaultModel} onChange={(model) => setBatchPipeline((current) => ({ ...current, model }))} />
                             <SelectField label="Modo SVG" value={batchPipeline.colorMode} options={colorModeOptions} onChange={(colorMode) => setBatchPipeline((current) => ({ ...current, colorMode }))} />
                             <ColorField label="Fundo SVG" value={batchPipeline.flattenColor} onChange={(flattenColor) => setBatchPipeline((current) => ({ ...current, flattenColor }))} />
                         </div>
                         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                            <Slider label="Luma low" value={batchPipeline.lumaLow} min={0} max={0.5} step={0.01} onChange={(lumaLow) => setBatchPipeline((current) => ({ ...current, lumaLow }))} />
-                            <Slider label="Luma high" value={batchPipeline.lumaHigh} min={0.5} max={1} step={0.01} onChange={(lumaHigh) => setBatchPipeline((current) => ({ ...current, lumaHigh }))} />
+                            <Slider label="Luma mínimo" value={batchPipeline.lumaLow} min={0} max={0.5} step={0.01} onChange={(lumaLow) => setBatchPipeline((current) => ({ ...current, lumaLow }))} />
+                            <Slider label="Luma máximo" value={batchPipeline.lumaHigh} min={0.5} max={1} step={0.01} onChange={(lumaHigh) => setBatchPipeline((current) => ({ ...current, lumaHigh }))} />
                             <Slider label="Gamma" value={batchPipeline.lumaGamma} min={0.3} max={3} step={0.1} onChange={(lumaGamma) => setBatchPipeline((current) => ({ ...current, lumaGamma }))} />
-                            <Slider label="Denoise" value={batchPipeline.lumaDenoise} min={0} max={7} step={1} onChange={(lumaDenoise) => setBatchPipeline((current) => ({ ...current, lumaDenoise }))} />
-                            <Slider label="Upscale" value={batchPipeline.upscale} min={1} max={3} step={0.25} onChange={(upscale) => setBatchPipeline((current) => ({ ...current, upscale }))} />
+                            <Slider label="Redução de ruído" value={batchPipeline.lumaDenoise} min={0} max={7} step={1} onChange={(lumaDenoise) => setBatchPipeline((current) => ({ ...current, lumaDenoise }))} />
+                            <Slider label="Ampliar antes" value={batchPipeline.upscale} min={1} max={3} step={0.25} onChange={(upscale) => setBatchPipeline((current) => ({ ...current, upscale }))} />
                         </div>
                         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                            <Slider label="Saturacao" value={batchPipeline.saturation} min={0.5} max={2} step={0.05} onChange={(saturation) => setBatchPipeline((current) => ({ ...current, saturation }))} />
+                            <Slider label="Saturação" value={batchPipeline.saturation} min={0.5} max={2} step={0.05} onChange={(saturation) => setBatchPipeline((current) => ({ ...current, saturation }))} />
                             <Slider label="Contraste" value={batchPipeline.contrast} min={0.5} max={2} step={0.05} onChange={(contrast) => setBatchPipeline((current) => ({ ...current, contrast }))} />
                             <Slider label="Brilho" value={batchPipeline.brightness} min={0.5} max={2} step={0.05} onChange={(brightness) => setBatchPipeline((current) => ({ ...current, brightness }))} />
-                            <Slider label="Speckle" value={batchPipeline.filterSpeckle} min={0} max={20} step={1} onChange={(filterSpeckle) => setBatchPipeline((current) => ({ ...current, filterSpeckle }))} />
-                            <Slider label="Precision" value={batchPipeline.colorPrecision} min={1} max={8} step={1} onChange={(colorPrecision) => setBatchPipeline((current) => ({ ...current, colorPrecision }))} />
+                            <Slider label="Remover manchas" value={batchPipeline.filterSpeckle} min={0} max={20} step={1} onChange={(filterSpeckle) => setBatchPipeline((current) => ({ ...current, filterSpeckle }))} />
+                            <Slider label="Precisão de cor" value={batchPipeline.colorPrecision} min={1} max={8} step={1} onChange={(colorPrecision) => setBatchPipeline((current) => ({ ...current, colorPrecision }))} />
                         </div>
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                             <CheckboxRow checked={batchPipeline.recursive} onChange={(recursive) => setBatchPipeline((current) => ({ ...current, recursive }))} label="Recursivo" />
@@ -176,7 +177,7 @@ export function BatchPipelineTool() {
             </motion.div>
 
             <motion.div {...cardEnter}>
-                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de pagina." icon={Activity}>
+                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de página." icon={Activity}>
                     {result ? (
                         <div className="space-y-4">
                             <div className="grid gap-3 md:grid-cols-4">
@@ -194,7 +195,7 @@ export function BatchPipelineTool() {
                                         <div className="min-w-0">
                                             <div className="truncate text-sm font-semibold">{item.input_path}</div>
                                             <div className="app-faint truncate text-xs">
-                                                {item.success ? `${item.outputs.length} output(s) - ${item.method_used ?? "ok"}` : item.error}
+                                                {item.success ? `${item.outputs.length} arquivo(s) - ${methodLabel(item.method_used) || "ok"}` : item.error}
                                             </div>
                                         </div>
                                         <span className="status-pill px-2 py-1 text-xs font-semibold" data-tone={item.success ? "good" : "bad"}>

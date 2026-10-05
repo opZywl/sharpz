@@ -89,7 +89,7 @@ echo %C_CYAN%  Instalando whisperX + pyannote (PyPI, opcional)...%C_RESET%
 uv pip install -p "%WPY%" whisperx imageio-ffmpeg
 if errorlevel 1 (
   echo %C_YEL%  [!] Falha ao instalar whisperX. Alinhamento/diarizacao ficarao indisponiveis;%C_RESET%
-  echo %C_YEL%      a transcricao basica (faster-whisper) continua funcionando.%C_RESET%
+  echo %C_YEL%      a transcricao basica ^(faster-whisper^) continua funcionando.%C_RESET%
 ) else (
   echo %C_GREEN%  [ok] whisperX instalado%C_RESET%
 )
