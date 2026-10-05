@@ -254,7 +254,7 @@ const ERROR_HINTS: Array<{ test: RegExp; message: string }> = [
     },
     {
         test: /ffmpeg/i,
-        message: "O ffmpeg não está disponível, e ele é necessário para ler o áudio. Rode o sharpz-setup.cmd para instalar.",
+        message: "O ffmpeg não está disponível, e ele é necessário para ler o áudio. Rode o sharpz.cmd e escolha Instalar.",
     },
     {
         test: /Caminho local n[aã]o encontrado|Arquivo n[aã]o encontrado|No such file|FileNotFoundError/i,

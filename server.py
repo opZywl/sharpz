@@ -1040,7 +1040,7 @@ async def portfolio_ktx(
     if not _has_python_module("alktx2"):
         return PortfolioKtxResponse(
             success=False,
-            summary="O conversor do Portfolio KTX não está instalado. Rode o sharpz-setup.cmd para instalar.",
+            summary="O conversor do Portfolio KTX não está instalado. Rode o sharpz.cmd e escolha Instalar.",
         )
 
     raw, image = await _read_upload_image(file)

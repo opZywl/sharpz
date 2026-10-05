@@ -1,10 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title Sharpz - Transcricao de Video
+title Sharpz - Abrir
 
-set "ROOT=%~dp0"
-if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 cd /d "%ROOT%"
 
 set "WVENV=%ROOT%\whisper-venv"
@@ -25,7 +24,7 @@ set "C_BOLD=%ESC%[1m"
 
 echo.
 echo %C_BOLD%%C_CYAN%====================================================%C_RESET%
-echo %C_BOLD%%C_CYAN%   Sharpz - Transcricao de Video (launcher)%C_RESET%
+echo %C_BOLD%%C_CYAN%   Sharpz - Abrir (dev)%C_RESET%
 echo %C_BOLD%%C_CYAN%====================================================%C_RESET%
 echo.
 
@@ -103,7 +102,7 @@ if not exist "%BPY%" (
     echo %C_RED%  [x] Falha ao criar o venv do backend. Verifique se o Python esta no PATH.%C_RESET%
     goto :fail
   )
-  echo %C_CYAN%  Instalando dependencias do backend (requirements.txt)...%C_RESET%
+  echo %C_CYAN%  Instalando dependencias do backend ^(requirements.txt^)...%C_RESET%
   "%BPY%" -m pip install --upgrade pip
   "%BPY%" -m pip install -r "%ROOT%\requirements.txt"
   if errorlevel 1 (

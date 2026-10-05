@@ -1,10 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title Sharpz - Setup completo (Transcricao)
+title Sharpz - Instalar
 
-set "ROOT=%~dp0"
-if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 cd /d "%ROOT%"
 
 set "WVENV=%ROOT%\whisper-venv"

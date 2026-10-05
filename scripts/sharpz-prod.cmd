@@ -3,8 +3,7 @@ setlocal enabledelayedexpansion
 chcp 65001 >nul
 title Sharpz - Modo PRODUCAO
 
-set "ROOT=%~dp0"
-if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 cd /d "%ROOT%"
 
 set "BVENV=%ROOT%\venv"
@@ -34,7 +33,7 @@ call :refresh_path
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo %C_RED%  [x] Node nao encontrado. Rode sharpz-setup.cmd primeiro.%C_RESET%
+  echo %C_RED%  [x] Node nao encontrado. Rode o sharpz.cmd e escolha Instalar primeiro.%C_RESET%
   goto :fail
 )
 for /f "tokens=*" %%v in ('node --version 2^>nul') do set "NODE_VER=%%v"
@@ -42,7 +41,7 @@ echo %C_GREEN%  [ok] Node %NODE_VER%%C_RESET%
 
 if not exist "%BPY%" (
   echo %C_RED%  [x] venv do backend nao encontrado em %BPY%.%C_RESET%
-  echo %C_RED%      Rode sharpz-setup.cmd primeiro.%C_RESET%
+  echo %C_RED%      Rode o sharpz.cmd e escolha Instalar primeiro.%C_RESET%
   goto :fail
 )
 echo %C_GREEN%  [ok] venv do backend disponivel%C_RESET%

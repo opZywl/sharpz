@@ -88,7 +88,7 @@ export function PortfolioKtxTool() {
                         </div>
                         {capabilities?.alktx2_found === false ? (
                             <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
-                                O conversor do Portfolio KTX não está instalado. Rode o sharpz-setup.cmd para instalar.
+                                O conversor do Portfolio KTX não está instalado. Rode o sharpz.cmd e escolha Instalar.
                             </div>
                         ) : null}
                         <div className="grid gap-3 md:grid-cols-3">

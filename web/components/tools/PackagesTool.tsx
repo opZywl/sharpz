@@ -166,7 +166,7 @@ export function PackagesTool() {
             <div className="space-y-4">
                 <motion.div {...cardEnter}>
                     <Panel title="Baixar pacotes" subtitle="Instale o que o Sharpz precisa para funcionar." icon={HardDriveDownload}>
-                        <EmptyState text="API offline — rode o sharpz-setup.cmd" />
+                        <EmptyState text="API offline — rode o sharpz.cmd" />
                     </Panel>
                 </motion.div>
             </div>

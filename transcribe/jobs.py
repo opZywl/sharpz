@@ -356,7 +356,7 @@ def _parse_event(raw: str) -> dict | None:
 def _spawn_failed(exc: OSError) -> JobFailed:
     return JobFailed(
         f"Não consegui iniciar o motor de transcrição ({exc}). "
-        "Confira se o whisper-venv está instalado (rode o sharpz-setup.cmd)."
+        "Confira se o whisper-venv está instalado (rode o sharpz.cmd e escolha Instalar)."
     )
 
 
@@ -972,7 +972,7 @@ class ModelDownloads:
             if state and state["status"] == "running":
                 return "running"
             if self._command is None and not VENV_PYTHON.exists():
-                raise RuntimeError("O motor de transcrição não está instalado. Rode o sharpz-setup.cmd e tente de novo.")
+                raise RuntimeError("O motor de transcrição não está instalado. Rode o sharpz.cmd, escolha Instalar e tente de novo.")
             argv = self._command(key) if self._command else [VENV_PYTHON, DOWNLOAD_SCRIPT, key]
             proc, _pump = _spawn(argv, self._log_path, f"download {key}", merge=True)
             self._state[key] = {"status": "running", "error": None}

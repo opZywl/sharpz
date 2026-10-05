@@ -54,7 +54,7 @@ def main(argv: list[str]) -> int:
     key = catalog().MODEL_ALIASES.get(requested.lower(), requested)
     utils = faster_whisper_utils()
     if utils is None:
-        print("[falha] faster-whisper não está instalado neste Python. Rode o sharpz-setup.cmd.", flush=True)
+        print("[falha] faster-whisper não está instalado neste Python. Rode o sharpz.cmd e escolha Instalar.", flush=True)
         return 1
     if key not in utils._MODELS and "/" not in key:
         print(f"[falha] modelo desconhecido: {requested}. Use um destes: {', '.join(utils._MODELS)}", flush=True)
