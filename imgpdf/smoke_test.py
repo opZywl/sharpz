@@ -27,15 +27,15 @@ def run() -> int:
     _make_image(img)
 
     blocks = [
-        {"text": "ANA SOUZA", "bbox": [18, 22, 335, 132]},
+        {"text": "LUCAS LIMA", "bbox": [18, 22, 335, 132]},
         {"text": "Sao Paulo, Brasil (remoto)", "bbox": [48, 270, 340, 300]},
-        {"text": "ana.souza@exemplo.com", "bbox": [48, 320, 340, 348]},
+        {"text": "contato@lucas-lima.dev", "bbox": [48, 320, 340, 348]},
         {"text": "back-end, front-end e e-mail; integracao de IA — producao.", "bbox": [18, 420, 760, 470]},
         {"text": "Next.js 16, React 19, TypeScript — webphone.", "bbox": [18, 520, 760, 570]},
         {"text": "Educacao: Bacharelado (8o semestre).", "bbox": [18, 640, 760, 690]},
     ]
     terms = [
-        "ANA SOUZA", "(remoto)", "ana.souza@exemplo.com",
+        "LUCAS LIMA", "(remoto)", "contato@lucas-lima.dev",
         "back-end", "front-end", "e-mail", "Next.js 16", "webphone",
     ]
 
