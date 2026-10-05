@@ -46,6 +46,4 @@ O passo a passo completo está em [Instalação e uso](docs/instalacao.md).
 
 O código é aberto, sob a [licença MIT](LICENSE).
 
-O nome **Sharpz** e o logo identificam o projeto original e não fazem parte dessa licença: em forks e versões modificadas, use outro nome e outro logo. Os créditos e direitos estão gravados nos metadados das próprias imagens.
-
 Algumas dependências têm licença própria. O PyMuPDF, usado no Imagem para PDF e no Editor de PDF, é AGPL-3.0, e os modelos de IA de remoção de fundo e de transcrição seguem as licenças dos seus autores.
