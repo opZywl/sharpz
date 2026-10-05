@@ -143,7 +143,11 @@ jobs:
             $code = curl.exe -s -o error.json -w "%{http_code}" -F "file=@README.md;type=image/png" "http://localhost:5174/api/clean"
             $detail = (Get-Content error.json -Raw -Encoding utf8 | ConvertFrom-Json).detail
             if ($code -ne "400" -or $detail -notmatch "Imagem inv") { throw "the friendly error did not come through the proxy: $code $detail" }
-            Write-Host "dashboard ok, default model $($default.key), friendly error: $detail"
+            $codeEn = curl.exe -s -o error-en.json -w "%{http_code}" -H "Accept-Language: en" -F "file=@README.md;type=image/png" "http://localhost:5174/api/clean"
+            $detailEn = (Get-Content error-en.json -Raw -Encoding utf8 | ConvertFrom-Json).detail
+            if ($codeEn -ne "400" -or $detailEn -notmatch "Invalid image") { throw "the English error did not come through the proxy: $codeEn $detailEn" }
+            if ($page.Content -notmatch "PT-BR") { throw "the language switch is missing from the dashboard" }
+            Write-Host "dashboard ok, default model $($default.key), friendly errors: $detail | $detailEn"
           } finally {
             foreach ($proc in $server, $web) {
               if ($proc -and -not $proc.HasExited) { taskkill /T /F /PID $proc.Id | Out-Null }
