@@ -66,7 +66,7 @@ rembg==2.0.75
 requests==2.33.1
 resvg_py==0.3.1
 rich==15.0.0
-rpds-py==0.30.0
+rpds-py==2026.6.3
 safehttpx==0.1.7
 scikit-image==0.26.0
 scipy==1.17.1
