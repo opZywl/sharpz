@@ -94,6 +94,11 @@ function Dashboard() {
     }
 
     function openModule(module: ModuleId) {
+        const moduleMeta = MODULES.find((item) => item.id === module)
+        if (moduleMeta?.tools.length === 1) {
+            openTool(moduleMeta.tools[0].id)
+            return
+        }
         setActiveModule(module)
         setActiveTool(null)
     }
@@ -192,9 +197,9 @@ function Dashboard() {
                                         </span>
                                         <span className="min-w-0 flex-1">
                                             <span className="block truncate font-jakarta text-sm font-extrabold uppercase leading-none tracking-tight">
-                                                Inicio
+                                                Início
                                             </span>
-                                            <span className="app-faint mt-1 block truncate text-xs">Todos os modulos</span>
+                                            <span className="app-faint mt-1 block truncate text-xs">Todos os módulos</span>
                                         </span>
                                     </button>
 
@@ -293,7 +298,7 @@ function Dashboard() {
                                         className="app-muted inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.16em] transition-colors hover:text-foreground"
                                     >
                                         <Home className="size-3.5" />
-                                        Inicio
+                                        Início
                                     </button>
                                     {activeModuleMeta ? (
                                         <>
