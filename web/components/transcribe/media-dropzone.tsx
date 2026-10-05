@@ -3,7 +3,8 @@
 import { FileAudio, Globe, HardDrive, Upload, X } from "lucide-react"
 import { useRef } from "react"
 
-import { MEDIA_ACCEPT, MEDIA_HINT } from "@/components/transcribe/transcribe-utils"
+import { MEDIA_ACCEPT } from "@/components/transcribe/transcribe-utils"
+import { useI18n } from "@/lib/i18n/provider"
 import { cn } from "@/lib/utils"
 
 export interface DropzoneSource {
@@ -31,6 +32,7 @@ export function MediaDropzone({
     onPick: (file: File) => void
     onClear: () => void
 }) {
+    const { t } = useI18n()
     const inputRef = useRef<HTMLInputElement | null>(null)
     const Icon = source ? SOURCE_ICONS[source.kind] : Upload
 
@@ -42,7 +44,7 @@ export function MediaDropzone({
         <div
             role="button"
             tabIndex={0}
-            aria-label="Escolher áudio ou vídeo para transcrever"
+            aria-label={t.mediaDropzone.aria}
             data-dragging={dragging}
             onClick={openPicker}
             onKeyDown={(event) => {
@@ -75,17 +77,15 @@ export function MediaDropzone({
                 <span className="grid max-w-full gap-1">
                     <span className="truncate font-jakarta text-base font-extrabold">{source.title}</span>
                     <span className="app-muted truncate text-sm">{source.subtitle}</span>
-                    <span className="app-faint text-xs">Clique ou solte outro arquivo para trocar.</span>
+                    <span className="app-faint text-xs">{t.mediaDropzone.replace}</span>
                 </span>
             ) : (
                 <span className="grid gap-1.5">
-                    <span className="font-jakarta text-lg font-extrabold">Solte o áudio ou vídeo aqui</span>
+                    <span className="font-jakarta text-lg font-extrabold">{t.mediaDropzone.title}</span>
                     <span className="app-muted text-sm">
-                        {autoStart
-                            ? "A transcrição começa sozinha. Também dá para clicar e escolher, ou colar com Ctrl+V."
-                            : "Também dá para clicar e escolher, ou colar com Ctrl+V."}
+                        {autoStart ? t.mediaDropzone.autoHint : t.mediaDropzone.manualHint}
                     </span>
-                    <span className="app-faint text-xs">{MEDIA_HINT}</span>
+                    <span className="app-faint text-xs">{t.transcribe.mediaHint}</span>
                 </span>
             )}
             {source ? (
@@ -96,8 +96,8 @@ export function MediaDropzone({
                         onClear()
                     }}
                     className="icon-btn absolute right-3 top-3"
-                    aria-label="Tirar este arquivo"
-                    title="Tirar este arquivo"
+                    aria-label={t.mediaDropzone.remove}
+                    title={t.mediaDropzone.remove}
                 >
                     <X className="size-4" />
                 </button>

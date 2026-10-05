@@ -9,6 +9,8 @@ import {
     KtxPreset,
     ModelInfo,
 } from "@/lib/dashboard-types"
+import { apiFetch } from "@/lib/dashboard-utils"
+import { useI18n } from "@/lib/i18n/provider"
 
 type ApiStatus = "checking" | "online" | "offline"
 
@@ -27,6 +29,7 @@ interface DashboardContextValue {
 const DashboardContext = createContext<DashboardContextValue | null>(null)
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
+    const { lang, t, ready } = useI18n()
     const [apiStatus, setApiStatus] = useState<ApiStatus>("checking")
     const [models, setModels] = useState<ModelInfo[]>([])
     const [ktxPresets, setKtxPresets] = useState<KtxPreset[]>([])
@@ -36,15 +39,16 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const [defaultKtxPreset, setDefaultKtxPreset] = useState<string>(DEFAULT_KTX_PRESET)
 
     useEffect(() => {
+        if (!ready) return
         let cancelled = false
 
         async function loadApi() {
             try {
                 const [healthRes, modelsRes, presetsRes, capabilitiesRes] = await Promise.all([
-                    fetch("/api/health"),
-                    fetch("/api/models"),
-                    fetch("/api/ktx/presets"),
-                    fetch("/api/capabilities"),
+                    apiFetch("/api/health"),
+                    apiFetch("/api/models"),
+                    apiFetch("/api/ktx/presets"),
+                    apiFetch("/api/capabilities"),
                 ])
                 if (!healthRes.ok || !modelsRes.ok || !presetsRes.ok || !capabilitiesRes.ok) {
                     throw new Error("API unavailable")
@@ -76,28 +80,27 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         return () => {
             cancelled = true
         }
-    }, [])
+    }, [lang, ready])
 
     const modelOptions = useMemo(
         () =>
-            (models.length ? models : [{ key: DEFAULT_MODEL, label: "ISNet (rápido)", is_default: true }]).map(
+            (models.length ? models : [{ key: DEFAULT_MODEL, label: t.model.fallback, is_default: true }]).map(
                 (model) => ({
                     value: model.key,
                     label: model.is_default ? `${model.label} *` : model.label,
                 }),
             ),
-        [models],
+        [models, t],
     )
 
     const ktxPresetOptions = useMemo(
         () =>
-            (ktxPresets.length
-                ? ktxPresets
-                : [{ key: DEFAULT_KTX_PRESET, label: "ULTRA - UASTC q4 + zcmp22", is_default: true }]
-            ).map((preset) => ({
-                value: preset.key,
-                label: preset.is_default ? `${preset.key} *` : preset.key,
-            })),
+            (ktxPresets.length ? ktxPresets : [{ key: DEFAULT_KTX_PRESET, label: DEFAULT_KTX_PRESET, is_default: true }]).map(
+                (preset) => ({
+                    value: preset.key,
+                    label: preset.is_default ? `${preset.key} *` : preset.key,
+                }),
+            ),
         [ktxPresets],
     )
 
@@ -132,7 +135,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
 export function useDashboard() {
     const context = useContext(DashboardContext)
     if (!context) {
-        throw new Error("useDashboard deve ser usado dentro de DashboardProvider")
+        throw new Error("useDashboard must be used inside DashboardProvider")
     }
     return context
 }

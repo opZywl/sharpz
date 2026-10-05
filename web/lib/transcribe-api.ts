@@ -1,4 +1,5 @@
-import { responseError } from "@/lib/dashboard-utils"
+import { apiFetch, responseError } from "@/lib/dashboard-utils"
+import { LocalizedError, getActiveLang, withLang, type Lang } from "@/lib/i18n"
 
 export type TranscribeStatus = "queued" | "running" | "done" | "error" | "canceled"
 
@@ -131,21 +132,20 @@ export interface SummarizeResult {
 const BASE = "/api/transcribe"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(`${BASE}${path}`, init)
+    const response = await apiFetch(`${BASE}${path}`, init)
     if (!response.ok) throw await responseError(response)
     return (await response.json()) as T
 }
 
 function xhrError(xhr: XMLHttpRequest): Promise<Error> {
     if (xhr.status === 413) {
-        return Promise.resolve(
-            new Error("O arquivo é grande demais para enviar por aqui. Use “Caminho no computador” em Mais opções."),
-        )
+        return Promise.resolve(new LocalizedError((t) => t.transcribe.tooLarge))
     }
     try {
         return responseError(new Response(xhr.responseText, { status: xhr.status, statusText: xhr.statusText }))
     } catch {
-        return Promise.resolve(new Error(`Erro HTTP ${xhr.status}.`))
+        const status = xhr.status
+        return Promise.resolve(new LocalizedError((t) => t.errors.http(status)))
     }
 }
 
@@ -160,13 +160,14 @@ export function startTranscription(
     return new Promise((resolve, reject) => {
         const { signal, onUploadProgress } = options
         if (signal?.aborted) {
-            reject(new DOMException("Envio cancelado.", "AbortError"))
+            reject(new DOMException("Upload canceled.", "AbortError"))
             return
         }
         const xhr = new XMLHttpRequest()
         const abort = () => xhr.abort()
         const settle = () => signal?.removeEventListener("abort", abort)
         xhr.open("POST", BASE)
+        xhr.setRequestHeader("Accept-Language", getActiveLang())
         xhr.upload.onprogress = (event) => {
             if (event.lengthComputable && event.total > 0) onUploadProgress?.(event.loaded / event.total)
         }
@@ -179,16 +180,16 @@ export function startTranscription(
             try {
                 resolve(JSON.parse(xhr.responseText) as StartTranscriptionResult)
             } catch {
-                reject(new Error("O servidor respondeu num formato inesperado ao criar a transcrição."))
+                reject(new LocalizedError((t) => t.transcribe.badResponse))
             }
         }
         xhr.onerror = () => {
             settle()
-            reject(new Error("Não consegui enviar o arquivo para o servidor do Sharpz. Confira se ele está rodando e tente de novo."))
+            reject(new LocalizedError((t) => t.transcribe.uploadFailed))
         }
         xhr.onabort = () => {
             settle()
-            reject(new DOMException("Envio cancelado.", "AbortError"))
+            reject(new DOMException("Upload canceled.", "AbortError"))
         }
         signal?.addEventListener("abort", abort, { once: true })
         xhr.send(form)
@@ -196,7 +197,7 @@ export function startTranscription(
 }
 
 export async function getJob(jobId: string): Promise<TranscribeJob | null> {
-    const response = await fetch(`${BASE}/jobs/${jobId}`)
+    const response = await apiFetch(`${BASE}/jobs/${jobId}`)
     if (response.status === 404) return null
     if (!response.ok) throw await responseError(response)
     return (await response.json()) as TranscribeJob
@@ -208,7 +209,7 @@ export function cancelJob(jobId: string): Promise<CancelJobResult> {
 
 export function openStream(jobId: string, handlers: StreamHandlers, since = 0): EventSource {
     const query = since > 0 ? `?since=${since}` : ""
-    const source = new EventSource(`${BASE}/jobs/${jobId}/stream${query}`)
+    const source = new EventSource(withLang(`${BASE}/jobs/${jobId}/stream${query}`))
     source.onmessage = (message) => {
         let event: TranscribeEvent
         try {
@@ -222,18 +223,18 @@ export function openStream(jobId: string, handlers: StreamHandlers, since = 0): 
     return source
 }
 
-export function downloadUrl(jobId: string, format: string): string {
-    return `${BASE}/jobs/${jobId}/download?format=${encodeURIComponent(format)}`
+export function downloadUrl(jobId: string, format: string, lang?: Lang): string {
+    return withLang(`${BASE}/jobs/${jobId}/download?format=${encodeURIComponent(format)}`, lang)
 }
 
 export async function fetchJobFile(jobId: string, format: string): Promise<Blob> {
-    const response = await fetch(downloadUrl(jobId, format))
+    const response = await apiFetch(downloadUrl(jobId, format))
     if (!response.ok) throw await responseError(response)
     return response.blob()
 }
 
-export function audioUrl(jobId: string): string {
-    return `${BASE}/jobs/${jobId}/audio`
+export function audioUrl(jobId: string, lang?: Lang): string {
+    return withLang(`${BASE}/jobs/${jobId}/audio`, lang)
 }
 
 export function summarize(jobId: string, options: SummarizeOptions): Promise<SummarizeResult> {
@@ -248,12 +249,12 @@ export function getComplete(jobId: string): Promise<CompleteManifest> {
     return request<CompleteManifest>(`/jobs/${jobId}/complete`)
 }
 
-export function completeFileUrl(jobId: string, path: string): string {
-    return `${BASE}/jobs/${jobId}/complete/file?path=${encodeURIComponent(path)}`
+export function completeFileUrl(jobId: string, path: string, lang?: Lang): string {
+    return withLang(`${BASE}/jobs/${jobId}/complete/file?path=${encodeURIComponent(path)}`, lang)
 }
 
-export function completeZipUrl(jobId: string): string {
-    return `${BASE}/jobs/${jobId}/complete/zip`
+export function completeZipUrl(jobId: string, lang?: Lang): string {
+    return withLang(`${BASE}/jobs/${jobId}/complete/zip`, lang)
 }
 
 export async function openCompleteFolder(jobId: string): Promise<void> {

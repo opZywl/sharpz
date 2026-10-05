@@ -10,11 +10,16 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { EditorElement, ElType, importDoc, renderHtml, renderPng } from "@/lib/editor-api"
+import { dictionaries, errorText, pick, type Messages } from "@/lib/i18n"
+import { useI18n, useMessage } from "@/lib/i18n/provider"
 
-const SIZES: Record<string, { w: number; h: number }> = {
+type PageSize = "A4" | "Letter"
+
+const SIZES: Record<PageSize, { w: number; h: number }> = {
     A4: { w: 595.276, h: 841.89 },
-    Carta: { w: 612, h: 792 },
+    Letter: { w: 612, h: 792 },
 }
+const SIZE_KEYS = Object.keys(SIZES) as PageSize[]
 const GOOGLE_FONTS = ["Inter", "Plus Jakarta Sans", "Roboto", "Poppins", "Montserrat", "Lato", "Raleway", "Oswald", "Merriweather", "Playfair Display", "Work Sans", "Manrope", "Nunito", "Source Sans 3"]
 const SYSTEM_FONTS = ["Arial", "Georgia", "Times New Roman", "Courier New", "Verdana"]
 const ALL_FONTS = [...GOOGLE_FONTS, ...SYSTEM_FONTS]
@@ -39,11 +44,18 @@ const ICONS: Record<string, string> = {
     github: '<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>',
 }
 
-const SEED: EditorElement[] = [
-    { id: "s1", type: "text", text: "LUCAS LIMA", x: 40, y: 50, w: 320, fontSize: 32, bold: true, italic: false, color: "#1b2740", align: "left", fontFamily: "Plus Jakarta Sans" },
-    { id: "s2", type: "text", text: "Desenvolvedor Full Stack | Software Engineer", x: 40, y: 98, w: 320, fontSize: 11, bold: false, italic: false, color: "#5b6472", align: "left", fontFamily: "Inter" },
-    { id: "s3", type: "text", text: "Importe um PDF, ou adicione texto/forma/imagem e arraste.", x: 40, y: 138, w: 380, fontSize: 10, bold: false, italic: true, color: "#8b94a3", align: "left", fontFamily: "Inter" },
-]
+function seedTexts(m: Messages): Record<string, string> {
+    return { s1: "LUCAS LIMA", s2: m.editor.seedRole, s3: m.editor.seedHint }
+}
+
+function seed(m: Messages): EditorElement[] {
+    const texts = seedTexts(m)
+    return [
+        { id: "s1", type: "text", text: texts.s1, x: 40, y: 50, w: 320, fontSize: 32, bold: true, italic: false, color: "#1b2740", align: "left", fontFamily: "Plus Jakarta Sans" },
+        { id: "s2", type: "text", text: texts.s2, x: 40, y: 98, w: 320, fontSize: 11, bold: false, italic: false, color: "#5b6472", align: "left", fontFamily: "Inter" },
+        { id: "s3", type: "text", text: texts.s3, x: 40, y: 138, w: 380, fontSize: 10, bold: false, italic: true, color: "#8b94a3", align: "left", fontFamily: "Inter" },
+    ]
+}
 
 let _uid = 0
 const uid = () => `el${Date.now().toString(36)}${(_uid++).toString(36)}`
@@ -55,7 +67,8 @@ const norm = (e: Partial<EditorElement> & { id: string }): EditorElement => ({
 })
 
 export function EditorTool() {
-    const [elements, setElements] = useState<EditorElement[]>(SEED)
+    const { t, fmt, resolve } = useI18n()
+    const [elements, setElements] = useState<EditorElement[]>(() => seed(t))
     const [page, setPage] = useState(SIZES.A4)
     const [pageBg, setPageBg] = useState("#ffffff")
     const [bg, setBg] = useState<string | null>(null)
@@ -66,7 +79,7 @@ export function EditorTool() {
     const [zoom, setZoom] = useState(1)
     const [full, setFull] = useState(false)
     const [busy, setBusy] = useState(false)
-    const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useMessage()
     const [menu, setMenu] = useState<"" | "icon" | "shape" | "export" | "page">("")
     const [guide, setGuide] = useState<{ x?: number; y?: number }>({})
     const [ctx, setCtx] = useState<{ sx: number; sy: number } | null>(null)
@@ -86,7 +99,6 @@ export function EditorTool() {
 
     const scale = fit * zoom
 
-    // fontes google
     useEffect(() => {
         const id = "editor-google-fonts"
         if (document.getElementById(id)) return
@@ -95,7 +107,6 @@ export function EditorTool() {
         document.head.appendChild(l)
     }, [])
 
-    // carregar autosave
     useEffect(() => {
         try {
             const raw = localStorage.getItem(LS_KEY)
@@ -105,15 +116,29 @@ export function EditorTool() {
                     setElements(d.elements.map(norm)); setPage(d.page || SIZES.A4); setPageBg(d.pageBg || "#ffffff")
                 }
             }
-        } catch { /* ignora */ }
+        } catch { return }
     }, [])
 
-    // autosave
     useEffect(() => {
-        const t = setTimeout(() => {
-            try { localStorage.setItem(LS_KEY, JSON.stringify({ page, pageBg, elements })) } catch { /* ignora */ }
+        const target = seedTexts(t)
+        const known = Object.values(dictionaries).map(seedTexts)
+        setElements((current) => {
+            let changed = false
+            const next = current.map((el) => {
+                const text = target[el.id]
+                if (text === undefined || el.text === text || !known.some((texts) => texts[el.id] === el.text)) return el
+                changed = true
+                return { ...el, text }
+            })
+            return changed ? next : current
+        })
+    }, [t])
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            try { localStorage.setItem(LS_KEY, JSON.stringify({ page, pageBg, elements })) } catch { return }
         }, 600)
-        return () => clearTimeout(t)
+        return () => clearTimeout(timer)
     }, [elements, page, pageBg])
 
     useEffect(() => {
@@ -149,7 +174,7 @@ export function EditorTool() {
         const base: EditorElement = norm({ id, x: 70, y: 70, w: 160, h: 80, fontSize: 16, color: "#1b2740", ...el })
         setElements((c) => [...c, base]); setSelected([id]); setMenu("")
     }
-    const addText = () => add({ type: "text", text: "Novo texto", w: 220, fontSize: 16, color: pageBg === "#ffffff" ? "#1a2436" : "#f3f5f8" })
+    const addText = () => add({ type: "text", text: t.editor.newText, w: 220, fontSize: 16, color: pageBg === "#ffffff" ? "#1a2436" : "#f3f5f8" })
     const addIcon = (icon: string) => add({ type: "icon", icon, w: 30, h: 30, fontSize: 30, color: pageBg === "#ffffff" ? "#1b2740" : "#e8edf6" })
     const addRect = () => add({ type: "rect", w: 160, h: 90, fill: "#e7ebf3", color: "#cfd6e4" })
     const addLine = () => add({ type: "line", w: 200, h: 2, color: "#cfd6e4", fontSize: 2 })
@@ -165,7 +190,6 @@ export function EditorTool() {
     function zorder(front: boolean) { if (!selEls.length) return; snapshot(); const ids = new Set(selected); setElements((c) => { const keep = c.filter((e) => !ids.has(e.id)); const move = c.filter((e) => ids.has(e.id)); return front ? [...keep, ...move] : [...move, ...keep] }) }
     function toggleLock() { if (!one) return; patch(one.id, { locked: !one.locked }) }
 
-    // arrastar (com snapping no single)
     function onDown(e: React.PointerEvent, id: string) {
         if (editing === id) return
         e.stopPropagation()
@@ -192,8 +216,8 @@ export function EditorTool() {
                 const xs: number[] = [0, page.w / 2, page.w]
                 const ys: number[] = [0, page.h / 2, page.h]
                 eref.current.forEach((o) => { if (o.id !== me.id) { xs.push(o.x, o.x + (o.w || 0) / 2, o.x + (o.w || 0)); ys.push(o.y, o.y + (o.h || o.fontSize) / 2, o.y + (o.h || o.fontSize)) } })
-                for (const t of xs) { if (Math.abs(cx - t) < th) { dx += t - cx; g.x = t; break } }
-                for (const t of ys) { if (Math.abs(cy - t) < th) { dy += t - cy; g.y = t; break } }
+                for (const target of xs) { if (Math.abs(cx - target) < th) { dx += target - cx; g.x = target; break } }
+                for (const target of ys) { if (Math.abs(cy - target) < th) { dy += target - cy; g.y = target; break } }
             }
             setGuide(g)
             setElements((c) => c.map((x) => (d.pos[x.id] ? { ...x, x: Math.round(d.pos[x.id].x + dx), y: Math.round(d.pos[x.id].y + dy) } : x)))
@@ -202,7 +226,6 @@ export function EditorTool() {
         window.addEventListener("pointermove", move); window.addEventListener("pointerup", up)
     }
 
-    // redimensionar
     function onResize(e: React.PointerEvent, el: EditorElement) {
         e.stopPropagation(); e.preventDefault()
         snapshot()
@@ -219,7 +242,6 @@ export function EditorTool() {
         window.addEventListener("pointermove", move); window.addEventListener("pointerup", up)
     }
 
-    // teclado
     useEffect(() => {
         function onKey(e: KeyboardEvent) {
             const tag = (e.target as HTMLElement)?.tagName
@@ -250,9 +272,9 @@ export function EditorTool() {
         try {
             const d = await importDoc(file, true)
             history.current = []; future.current = []
-            setPage(d.page); setElements((d.elements.length ? d.elements : SEED).map(norm))
+            setPage(d.page); setElements((d.elements.length ? d.elements : seed(t)).map(norm))
             setBg(d.bg); setShowBg(false); setPageBg(d.page_bg || "#ffffff"); setZoom(1); setSelected([])
-        } catch (err) { setError(err instanceof Error ? err.message : "Falha ao importar.") } finally { setBusy(false) }
+        } catch (err) { setError(errorText(err, (m) => m.editor.importFailed)) } finally { setBusy(false) }
     }
 
     function buildHtml() {
@@ -276,16 +298,16 @@ export function EditorTool() {
         try {
             const blob = kind === "pdf" ? await renderHtml(buildHtml()) : await renderPng(buildHtml(), page.w, page.h)
             const url = URL.createObjectURL(blob); const a = document.createElement("a")
-            a.href = url; a.download = `documento-editado.${kind}`; a.click(); URL.revokeObjectURL(url)
-        } catch (err) { setError(err instanceof Error ? err.message : "Falha ao exportar.") } finally { setBusy(false) }
+            a.href = url; a.download = `${t.editor.exportName}.${kind}`; a.click(); URL.revokeObjectURL(url)
+        } catch (err) { setError(errorText(err, (m) => m.editor.exportFailed)) } finally { setBusy(false) }
     }
 
     function saveProject() {
         const blob = new Blob([JSON.stringify({ page, pageBg, elements }, null, 2)], { type: "application/json" })
-        const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "projeto-editor.json"; a.click(); URL.revokeObjectURL(url)
+        const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = t.editor.projectName; a.click(); URL.revokeObjectURL(url)
     }
     function openProject(file: File) {
-        const r = new FileReader(); r.onload = () => { try { const d = JSON.parse(String(r.result)); if (Array.isArray(d.elements)) { history.current = []; setPage(d.page || SIZES.A4); setPageBg(d.pageBg || "#ffffff"); setElements(d.elements.map(norm)); setSelected([]); setBg(null) } } catch { setError("Projeto invalido.") } }; r.readAsText(file)
+        const r = new FileReader(); r.onload = () => { try { const d = JSON.parse(String(r.result)); if (Array.isArray(d.elements)) { history.current = []; setPage(d.page || SIZES.A4); setPageBg(d.pageBg || "#ffffff"); setElements(d.elements.map(norm)); setSelected([]); setBg(null) } } catch { setError((m) => m.editor.invalidProject) } }; r.readAsText(file)
     }
 
     const Wpx = page.w * scale, Hpx = page.h * scale
@@ -297,59 +319,57 @@ export function EditorTool() {
     return (
         <div className={full ? "fixed inset-0 z-[60] bg-background p-3" : ""}>
             <div className="flex flex-col gap-2" style={{ height: full ? "100%" : "80vh" }}>
-                {error ? <div className="app-alert rounded-xl px-4 py-3 text-sm shrink-0"><span className="whitespace-pre-wrap">{error}</span></div> : null}
+                {error ? <div className="app-alert rounded-xl px-4 py-3 text-sm shrink-0"><span className="whitespace-pre-wrap">{resolve(error)}</span></div> : null}
 
-                {/* barra principal */}
                 <div className="dashboard-shell shrink-0"><div className="dashboard-inner flex flex-wrap items-center gap-2 p-2">
                     <input ref={fileRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onImport(f); e.currentTarget.value = "" }} />
                     <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onImg(f); e.currentTarget.value = "" }} />
                     <input ref={projRef} type="file" accept="application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) openProject(f); e.currentTarget.value = "" }} />
-                    <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={busy}>{busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} Importar</Button>
-                    <Button variant="outline" size="sm" onClick={addText}><Type className="size-4" /> Texto</Button>
+                    <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={busy}>{busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} {t.editor.import}</Button>
+                    <Button variant="outline" size="sm" onClick={addText}><Type className="size-4" /> {t.editor.text}</Button>
                     <div className="relative">
-                        <Button variant="outline" size="sm" onClick={() => setMenu(menu === "icon" ? "" : "icon")}><Shapes className="size-4" /> Ícone</Button>
-                        {menu === "icon" ? <div className="pop grid grid-cols-5 gap-1 p-2" style={{ top: "calc(100% + 6px)", left: 0, width: 220 }}>{Object.keys(ICONS).map((n) => <button key={n} className="icon-btn" title={n} onClick={() => addIcon(n)} dangerouslySetInnerHTML={{ __html: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>` }} />)}</div> : null}
+                        <Button variant="outline" size="sm" onClick={() => setMenu(menu === "icon" ? "" : "icon")}><Shapes className="size-4" /> {t.editor.icon}</Button>
+                        {menu === "icon" ? <div className="pop grid grid-cols-5 gap-1 p-2" style={{ top: "calc(100% + 6px)", left: 0, width: 220 }}>{Object.keys(ICONS).map((n) => <button key={n} className="icon-btn" title={pick(t.editor.icons, n) ?? n} aria-label={pick(t.editor.icons, n) ?? n} onClick={() => addIcon(n)} dangerouslySetInnerHTML={{ __html: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>` }} />)}</div> : null}
                     </div>
                     <div className="relative">
-                        <Button variant="outline" size="sm" onClick={() => setMenu(menu === "shape" ? "" : "shape")}><Square className="size-4" /> Forma</Button>
-                        {menu === "shape" ? <div className="pop flex gap-1 p-2" style={{ top: "calc(100% + 6px)", left: 0 }}><button className="icon-btn" title="Retângulo" onClick={addRect}><Square className="size-4" /></button><button className="icon-btn" title="Linha" onClick={addLine}><Slash className="size-4" /></button></div> : null}
+                        <Button variant="outline" size="sm" onClick={() => setMenu(menu === "shape" ? "" : "shape")}><Square className="size-4" /> {t.editor.shape}</Button>
+                        {menu === "shape" ? <div className="pop flex gap-1 p-2" style={{ top: "calc(100% + 6px)", left: 0 }}><button className="icon-btn" title={t.editor.rectangle} onClick={addRect}><Square className="size-4" /></button><button className="icon-btn" title={t.editor.line} onClick={addLine}><Slash className="size-4" /></button></div> : null}
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => imgRef.current?.click()}><ImageIcon className="size-4" /> Imagem</Button>
+                    <Button variant="outline" size="sm" onClick={() => imgRef.current?.click()}><ImageIcon className="size-4" /> {t.editor.image}</Button>
                     <div className="mx-1 h-5 w-px bg-foreground/15" />
-                    <button className="icon-btn" title="Desfazer (Ctrl+Z)" onClick={undo}><Undo2 className="size-4" /></button>
-                    <button className="icon-btn" title="Refazer (Ctrl+Shift+Z)" onClick={redo}><Redo2 className="size-4" /></button>
+                    <button className="icon-btn" title={t.editor.undo} onClick={undo}><Undo2 className="size-4" /></button>
+                    <button className="icon-btn" title={t.editor.redo} onClick={redo}><Redo2 className="size-4" /></button>
                     <div className="mx-1 h-5 w-px bg-foreground/15" />
-                    <button className="icon-btn" title="Diminuir zoom" onClick={() => setZoom((z) => Math.max(0.2, +(z - 0.2).toFixed(2)))}><ZoomOut className="size-4" /></button>
-                    <button className="text-xs font-semibold tabular-nums" style={{ minWidth: 42 }} onClick={() => setZoom(1)} title="Resetar zoom (ajustar à tela)">{Math.round(scale * 100)}%</button>
-                    <button className="icon-btn" title="Aumentar zoom" onClick={() => setZoom((z) => Math.min(8, +(z + 0.2).toFixed(2)))}><ZoomIn className="size-4" /></button>
+                    <button className="icon-btn" title={t.editor.zoomOut} onClick={() => setZoom((z) => Math.max(0.2, +(z - 0.2).toFixed(2)))}><ZoomOut className="size-4" /></button>
+                    <button className="text-xs font-semibold tabular-nums" style={{ minWidth: 42 }} onClick={() => setZoom(1)} title={t.editor.zoomReset}>{fmt.percent(scale)}</button>
+                    <button className="icon-btn" title={t.editor.zoomIn} onClick={() => setZoom((z) => Math.min(8, +(z + 0.2).toFixed(2)))}><ZoomIn className="size-4" /></button>
                     <div className="ml-auto flex items-center gap-1.5">
-                        <span className="app-faint mr-1 hidden text-xs sm:inline">{elements.length} itens{selected.length ? ` • ${selected.length} sel.` : ""}</span>
+                        <span className="app-faint mr-1 hidden text-xs sm:inline">{t.editor.items(elements.length)}{selected.length ? t.editor.selected(selected.length) : ""}</span>
                         <div className="relative">
-                            <Button variant="outline" size="sm" onClick={() => setMenu(menu === "page" ? "" : "page")}><Settings2 className="size-4" /> Página</Button>
+                            <Button variant="outline" size="sm" onClick={() => setMenu(menu === "page" ? "" : "page")}><Settings2 className="size-4" /> {t.editor.page}</Button>
                             {menu === "page" ? <div className="pop flex flex-col gap-2.5 p-3 text-xs" style={{ top: "calc(100% + 6px)", right: 0, width: 234 }}>
-                                <label className="flex items-center justify-between gap-2">Tamanho <select value={Object.keys(SIZES).find((k) => SIZES[k].w === page.w) || "A4"} onChange={(e) => { snapshot(); setPage(SIZES[e.target.value]) }} className="app-input h-8" style={{ width: 120 }}>{Object.keys(SIZES).map((k) => <option key={k} value={k}>{k}</option>)}</select></label>
-                                <label className="flex items-center justify-between gap-2">Cor de fundo <span className="flex items-center gap-1"><input type="color" value={pageBg} onChange={(e) => setPageBg(e.target.value)} className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0" /><button className="icon-btn" title="Claro" onClick={() => setPageBg("#ffffff")}><Sun className="size-3.5" /></button><button className="icon-btn" title="Escuro" onClick={() => setPageBg("#070b0f")}><Moon className="size-3.5" /></button></span></label>
-                                {bg ? <button className="select-option" onClick={() => setShowBg((s) => !s)}>{showBg ? "Ocultar imagem de guia" : "Mostrar imagem de guia"}</button> : null}
+                                <label className="flex items-center justify-between gap-2">{t.editor.size} <select value={SIZE_KEYS.find((k) => SIZES[k].w === page.w) || "A4"} onChange={(e) => { snapshot(); setPage(SIZES[e.target.value as PageSize]) }} className="app-input h-8" style={{ width: 120 }}>{SIZE_KEYS.map((k) => <option key={k} value={k}>{t.editor.sizes[k]}</option>)}</select></label>
+                                <label className="flex items-center justify-between gap-2">{t.fields.bgColor} <span className="flex items-center gap-1"><input type="color" value={pageBg} onChange={(e) => setPageBg(e.target.value)} className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0" /><button className="icon-btn" title={t.editor.light} onClick={() => setPageBg("#ffffff")}><Sun className="size-3.5" /></button><button className="icon-btn" title={t.editor.dark} onClick={() => setPageBg("#070b0f")}><Moon className="size-3.5" /></button></span></label>
+                                {bg ? <button className="select-option" onClick={() => setShowBg((s) => !s)}>{showBg ? t.editor.hideGuide : t.editor.showGuide}</button> : null}
                             </div> : null}
                         </div>
-                        <button className="icon-btn" title="Salvar projeto (.json)" onClick={saveProject}><Save className="size-4" /></button>
-                        <button className="icon-btn" title="Abrir projeto (.json)" onClick={() => projRef.current?.click()}><FolderOpen className="size-4" /></button>
-                        <button className="icon-btn" title={full ? "Sair da tela cheia" : "Tela cheia"} onClick={() => setFull((f) => !f)}>{full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}</button>
+                        <button className="icon-btn" title={t.editor.saveProject} onClick={saveProject}><Save className="size-4" /></button>
+                        <button className="icon-btn" title={t.editor.openProject} onClick={() => projRef.current?.click()}><FolderOpen className="size-4" /></button>
+                        <button className="icon-btn" title={full ? t.editor.exitFullscreen : t.editor.fullscreen} onClick={() => setFull((f) => !f)}>{full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}</button>
                         <div className="relative">
-                            <Button size="sm" onClick={() => setMenu(menu === "export" ? "" : "export")} disabled={busy}>{busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} Baixar <ChevronDown className="size-3" /></Button>
+                            <Button size="sm" onClick={() => setMenu(menu === "export" ? "" : "export")} disabled={busy}>{busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} {t.common.download} <ChevronDown className="size-3" /></Button>
                             {menu === "export" ? <div className="pop flex flex-col gap-1 p-1.5" style={{ top: "calc(100% + 6px)", right: 0, width: 150 }}><button className="select-option" onClick={() => exportAs("pdf")}><FileText className="size-4" /> PDF</button><button className="select-option" onClick={() => exportAs("png")}><FileImage className="size-4" /> PNG</button></div> : null}
                         </div>
                     </div>
                 </div></div>
 
-                {/* toolbar do elemento */}
                 {selEls.length ? (
                     <div className="dashboard-shell shrink-0"><div className="dashboard-inner flex flex-wrap items-center gap-2 p-2.5">
                         {isText ? <select value={repText?.fontFamily || "Inter"} onChange={(e) => patchSel({ fontFamily: e.target.value })} className="app-input h-8 text-xs" style={{ minWidth: 150, fontFamily: `'${repText?.fontFamily}',sans-serif` }}>{ALL_FONTS.map((f) => <option key={f} value={f} style={{ fontFamily: `'${f}',sans-serif` }}>{f}</option>)}</select> : null}
                         {sizeRep ? (<>
-                            <button className="icon-btn" title="Menor" onClick={() => patchSel({ fontSize: Math.max(2, +(sizeRep.fontSize - 1).toFixed(1)) })}><Minus className="size-4" /></button>
-                            <span className="min-w-[40px] text-center text-sm font-semibold">{Math.round(sizeRep.fontSize)}</span>
-                            <button className="icon-btn" title="Maior" onClick={() => patchSel({ fontSize: +(sizeRep.fontSize + 1).toFixed(1) })}><Plus className="size-4" /></button>
+                            <button className="icon-btn" title={t.editor.smaller} onClick={() => patchSel({ fontSize: Math.max(2, +(sizeRep.fontSize - 1).toFixed(1)) })}><Minus className="size-4" /></button>
+                            <span className="min-w-[40px] text-center text-sm font-semibold">{fmt.number(Math.round(sizeRep.fontSize))}</span>
+                            <button className="icon-btn" title={t.editor.larger} onClick={() => patchSel({ fontSize: +(sizeRep.fontSize + 1).toFixed(1) })}><Plus className="size-4" /></button>
                         </>) : null}
                         {isText ? (<>
                             <div className="mx-1 h-5 w-px bg-foreground/15" />
@@ -361,21 +381,20 @@ export function EditorTool() {
                             <button className="icon-btn" data-active={repText?.align === "right"} onClick={() => patchSel({ align: "right" })}><AlignRight className="size-4" /></button>
                         </>) : null}
                         <div className="mx-1 h-5 w-px bg-foreground/15" />
-                        <label className="flex items-center gap-1.5"><span className="app-faint text-xs">{one && (one.type === "rect") ? "Borda" : "Cor"}</span><input type="color" value={(selEls[0].color) || "#000000"} onChange={(e) => patchSel({ color: e.target.value })} className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0" /></label>
-                        {one && one.type === "rect" ? <label className="flex items-center gap-1.5"><span className="app-faint text-xs">Preenche</span><input type="color" value={one.fill || "#ffffff"} onChange={(e) => patchSel({ fill: e.target.value })} className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0" /></label> : null}
+                        <label className="flex items-center gap-1.5"><span className="app-faint text-xs">{one && (one.type === "rect") ? t.editor.border : t.editor.color}</span><input type="color" value={(selEls[0].color) || "#000000"} onChange={(e) => patchSel({ color: e.target.value })} className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0" /></label>
+                        {one && one.type === "rect" ? <label className="flex items-center gap-1.5"><span className="app-faint text-xs">{t.editor.fill}</span><input type="color" value={one.fill || "#ffffff"} onChange={(e) => patchSel({ fill: e.target.value })} className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0" /></label> : null}
                         <div className="mx-1 h-5 w-px bg-foreground/15" />
-                        <label className="flex items-center gap-1.5" title="Opacidade"><span className="app-faint text-xs">Opac</span><input type="range" min={10} max={100} value={Math.round((selEls[0].opacity ?? 1) * 100)} onChange={(e) => patchSel({ opacity: +e.target.value / 100 })} className="w-16" /></label>
-                        <label className="flex items-center gap-1.5" title="Rotação"><RotateCw className="size-3.5" /><input type="number" value={Math.round(selEls[0].rotation ?? 0)} onChange={(e) => patchSel({ rotation: +e.target.value })} className="app-input h-8 w-14 text-xs" /></label>
+                        <label className="flex items-center gap-1.5" title={t.editor.opacity}><span className="app-faint text-xs">{t.editor.opacityShort}</span><input type="range" min={10} max={100} value={Math.round((selEls[0].opacity ?? 1) * 100)} onChange={(e) => patchSel({ opacity: +e.target.value / 100 })} className="w-16" /></label>
+                        <label className="flex items-center gap-1.5" title={t.editor.rotation}><RotateCw className="size-3.5" /><input type="number" value={Math.round(selEls[0].rotation ?? 0)} onChange={(e) => patchSel({ rotation: +e.target.value })} className="app-input h-8 w-14 text-xs" /></label>
                         <div className="mx-1 h-5 w-px bg-foreground/15" />
-                        <button className="icon-btn" title="Trazer p/ frente" onClick={() => zorder(true)}><BringToFront className="size-4" /></button>
-                        <button className="icon-btn" title="Enviar p/ trás" onClick={() => zorder(false)}><SendToBack className="size-4" /></button>
-                        {one ? <button className="icon-btn" data-active={one.locked} title={one.locked ? "Destravar" : "Travar"} onClick={toggleLock}>{one.locked ? <Lock className="size-4" /> : <Unlock className="size-4" />}</button> : null}
-                        <button className="icon-btn" title="Duplicar (Ctrl+D)" onClick={dupSel}><Copy className="size-4" /></button>
-                        <button className="icon-btn" title="Apagar (Del)" onClick={delSel}><Trash2 className="size-4" /></button>
+                        <button className="icon-btn" title={t.editor.bringFront} onClick={() => zorder(true)}><BringToFront className="size-4" /></button>
+                        <button className="icon-btn" title={t.editor.sendBack} onClick={() => zorder(false)}><SendToBack className="size-4" /></button>
+                        {one ? <button className="icon-btn" data-active={one.locked} title={one.locked ? t.editor.unlock : t.editor.lock} onClick={toggleLock}>{one.locked ? <Lock className="size-4" /> : <Unlock className="size-4" />}</button> : null}
+                        <button className="icon-btn" title={t.editor.duplicateShortcut} onClick={dupSel}><Copy className="size-4" /></button>
+                        <button className="icon-btn" title={t.editor.deleteShortcut} onClick={delSel}><Trash2 className="size-4" /></button>
                     </div></div>
                 ) : null}
 
-                {/* canvas */}
                 <div className="dashboard-shell flex-1 min-h-0"><div ref={canvasRef} className="dashboard-inner flex h-full overflow-auto p-4">
                     <div ref={wrapRef}
                         onPointerDown={() => { setSelected([]); setEditing(null); setMenu(""); setCtx(null) }}
@@ -411,7 +430,7 @@ export function EditorTool() {
                                 <div key={el.id}>
                                     {inner}
                                     {isSel && selected.length === 1 && !el.locked && !isEd ? (
-                                        <div onPointerDown={(e) => onResize(e, el)} title="Redimensionar"
+                                        <div onPointerDown={(e) => onResize(e, el)} title={t.editor.resize}
                                             style={{ position: "absolute", left: (el.x + (el.type === "icon" ? el.fontSize : el.w)) * scale - 5, top: (el.y + (el.type === "icon" ? el.fontSize : el.type === "text" ? 0 : (el.h || 80))) * scale - 5, width: 11, height: 11, background: "#3b82f6", border: "2px solid #fff", borderRadius: 3, cursor: "nwse-resize", zIndex: 100 }} />
                                     ) : null}
                                 </div>
@@ -420,11 +439,11 @@ export function EditorTool() {
 
                         {ctx ? (
                             <div className="pop flex flex-col gap-1 p-1.5" style={{ left: ctx.sx, top: ctx.sy, width: 168, zIndex: 101 }} onPointerDown={(e) => e.stopPropagation()}>
-                                <button className="select-option" onClick={() => { dupSel(); setCtx(null) }}><Copy className="size-4" /> Duplicar</button>
-                                <button className="select-option" onClick={() => { zorder(true); setCtx(null) }}><BringToFront className="size-4" /> Trazer p/ frente</button>
-                                <button className="select-option" onClick={() => { zorder(false); setCtx(null) }}><SendToBack className="size-4" /> Enviar p/ trás</button>
-                                <button className="select-option" onClick={() => { toggleLock(); setCtx(null) }}><Lock className="size-4" /> Travar/Destravar</button>
-                                <button className="select-option" onClick={() => { delSel(); setCtx(null) }}><Trash2 className="size-4" /> Apagar</button>
+                                <button className="select-option" onClick={() => { dupSel(); setCtx(null) }}><Copy className="size-4" /> {t.editor.duplicate}</button>
+                                <button className="select-option" onClick={() => { zorder(true); setCtx(null) }}><BringToFront className="size-4" /> {t.editor.bringFront}</button>
+                                <button className="select-option" onClick={() => { zorder(false); setCtx(null) }}><SendToBack className="size-4" /> {t.editor.sendBack}</button>
+                                <button className="select-option" onClick={() => { toggleLock(); setCtx(null) }}><Lock className="size-4" /> {t.editor.toggleLock}</button>
+                                <button className="select-option" onClick={() => { delSel(); setCtx(null) }}><Trash2 className="size-4" /> {t.editor.delete}</button>
                             </div>
                         ) : null}
                     </div>
@@ -432,8 +451,12 @@ export function EditorTool() {
 
                 {!full ? (
                     <p className="app-faint shrink-0 text-xs">
-                        <b>2 cliques</b> edita • arraste move (guias) • <b>alça azul</b> redimensiona • <b>Shift+clique</b> multi •
-                        <b> Ctrl+C/V/D</b>, Del, setas, <b>Ctrl+Z/Y</b>, Ctrl+A • botão direito = menu • <b>Tela cheia</b> p/ editar grande • <b>Baixar</b> PDF/PNG.
+                        {t.editor.help.map((part) => (
+                            <span key={part.bold}>
+                                <b>{part.bold}</b>
+                                {part.text}
+                            </span>
+                        ))}
                     </p>
                 ) : null}
             </div>

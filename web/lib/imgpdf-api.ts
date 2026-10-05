@@ -1,4 +1,5 @@
-import { responseError } from "@/lib/dashboard-utils"
+import { apiFetch, responseError } from "@/lib/dashboard-utils"
+import { withLang, type Lang } from "@/lib/i18n"
 
 export interface ImgPdfLog {
     level: "info" | "warn" | "ok"
@@ -62,52 +63,49 @@ export interface StartImgPdfResult {
 const BASE = "/api/image-to-pdf"
 
 export async function startImageToPdf(form: FormData): Promise<StartImgPdfResult> {
-    const response = await fetch(BASE, { method: "POST", body: form })
+    const response = await apiFetch(BASE, { method: "POST", body: form })
     if (!response.ok) throw await responseError(response)
     return (await response.json()) as StartImgPdfResult
 }
 
 export async function getImgPdfJob(jobId: string): Promise<ImgPdfJob> {
-    const response = await fetch(`${BASE}/jobs/${jobId}`)
+    const response = await apiFetch(`${BASE}/jobs/${jobId}`)
     if (!response.ok) throw await responseError(response)
     return (await response.json()) as ImgPdfJob
 }
 
 export function openImgPdfStream(jobId: string, onEvent: (event: ImgPdfEvent) => void): EventSource {
-    const source = new EventSource(`${BASE}/jobs/${jobId}/stream`)
+    const source = new EventSource(withLang(`${BASE}/jobs/${jobId}/stream`))
     source.onmessage = (message) => {
         try {
             onEvent(JSON.parse(message.data) as ImgPdfEvent)
         } catch {
-            // ignora linhas que nao sao JSON valido
+            return
         }
     }
     source.onerror = () => {
         if (source.readyState === EventSource.CLOSED) {
-            onEvent({
-                type: "error",
-                message: "A conexão com o servidor caiu e a conversão foi interrompida. Confira se o Sharpz está rodando e tente de novo.",
-            })
+            onEvent({ type: "error", reason: "disconnected" })
         }
     }
     return source
 }
 
-export function imgPdfDownloadUrl(jobId: string): string {
-    return `${BASE}/jobs/${jobId}/download`
+export function imgPdfDownloadUrl(jobId: string, lang?: Lang): string {
+    return withLang(`${BASE}/jobs/${jobId}/download`, lang)
 }
 
-export function imgPdfPreviewUrl(jobId: string): string {
-    return `${BASE}/jobs/${jobId}/preview`
+export function imgPdfPreviewUrl(jobId: string, lang?: Lang): string {
+    return withLang(`${BASE}/jobs/${jobId}/preview`, lang)
 }
 
 export async function openImgPdfFolder(jobId: string): Promise<void> {
-    const response = await fetch(`${BASE}/jobs/${jobId}/open-folder`, { method: "POST" })
+    const response = await apiFetch(`${BASE}/jobs/${jobId}/open-folder`, { method: "POST" })
     if (!response.ok) throw await responseError(response)
 }
 
 export async function getImgPdfCapabilities(): Promise<ImgPdfCapabilities> {
-    const response = await fetch(`${BASE}/capabilities`)
+    const response = await apiFetch(`${BASE}/capabilities`)
     if (!response.ok) throw await responseError(response)
     return (await response.json()) as ImgPdfCapabilities
 }

@@ -8,10 +8,11 @@ import type WaveSurfer from "wavesurfer.js"
 import { Metric, Panel, cardEnter } from "@/components/dashboard/primitives"
 import { CopyButton, JobFileButton, SaveTextButton } from "@/components/transcribe/transcribe-actions"
 import { useLatest, useStickToBottom } from "@/components/transcribe/transcribe-hooks"
-import { degradedLabels, formatClock, languageName } from "@/components/transcribe/transcribe-utils"
+import { degradedLabels, formatClock } from "@/components/transcribe/transcribe-utils"
 import type { JobState } from "@/components/transcribe/use-transcribe-job"
 import { Button } from "@/components/ui/button"
 import { Segmented } from "@/components/ui/segmented"
+import { useI18n } from "@/lib/i18n/provider"
 import { audioUrl, type TranscribeSegment } from "@/lib/transcribe-api"
 import { cn } from "@/lib/utils"
 
@@ -37,6 +38,7 @@ function SegmentsView({
     busy: boolean
     canListen: boolean
 }) {
+    const { lang, t } = useI18n()
     const [waveRequested, setWaveRequested] = useState(false)
     const [waveStatus, setWaveStatus] = useState<"loading" | "ready" | "failed">("loading")
     const [active, setActive] = useState<number | null>(null)
@@ -44,6 +46,7 @@ function SegmentsView({
     const surferRef = useRef<WaveSurfer | null>(null)
     const pendingRef = useRef<number | null>(null)
     const segmentsRef = useLatest(segments)
+    const langRef = useLatest(lang)
     const list = useStickToBottom<HTMLDivElement>(segments.length, jobId)
 
     const speakers = useMemo(() => {
@@ -88,7 +91,7 @@ function SegmentsView({
                     barGap: 1,
                     barRadius: 2,
                     mediaControls: true,
-                    url: audioUrl(jobId),
+                    url: audioUrl(jobId, langRef.current),
                 })
                 instance = created
                 surferRef.current = created
@@ -121,7 +124,7 @@ function SegmentsView({
                 return
             }
         }
-    }, [waveRequested, jobId, playAt, segmentsRef])
+    }, [waveRequested, jobId, playAt, segmentsRef, langRef])
 
     function handleSegment(index: number) {
         setActive(index)
@@ -141,26 +144,26 @@ function SegmentsView({
                     {waveRequested ? (
                         <>
                             <div className="flex items-center justify-between gap-2">
-                                <span className="field-label">Forma de onda</span>
+                                <span className="field-label">{t.result.waveform}</span>
                                 <span className="app-faint text-xs">
                                     {waveStatus === "failed"
-                                        ? "não deu para carregar"
+                                        ? t.result.waveFailedShort
                                         : waveStatus === "ready"
-                                          ? "clique num trecho para ouvir dali"
-                                          : "carregando o áudio..."}
+                                          ? t.result.waveReady
+                                          : t.result.waveLoading}
                                 </span>
                             </div>
                             <div ref={containerRef} className={cn("min-h-[72px] w-full", waveStatus === "failed" && "hidden")} />
                             {waveStatus === "failed" ? (
-                                <p className="app-muted text-sm">Não consegui carregar o áudio. A lista de trechos continua funcionando.</p>
+                                <p className="app-muted text-sm">{t.result.waveFailed}</p>
                             ) : null}
                         </>
                     ) : (
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                            <span className="app-muted text-sm">O áudio só carrega quando você pedir. Clicar num trecho também toca dali.</span>
+                            <span className="app-muted text-sm">{t.result.waveIdle}</span>
                             <Button type="button" variant="outline" size="sm" onClick={() => setWaveRequested(true)}>
                                 <Headphones className="size-4" />
-                                Ouvir e ver a onda
+                                {t.result.listen}
                             </Button>
                         </div>
                     )}
@@ -169,10 +172,10 @@ function SegmentsView({
 
             {speakers.length ? (
                 <div className="flex flex-wrap items-center gap-2">
-                    <span className="field-label">Quem fala</span>
+                    <span className="field-label">{t.result.speakers}</span>
                     {speakers.map(([name, count]) => (
                         <span key={name} className="status-pill px-2.5 py-1 text-[11px] font-bold">
-                            {name} · {count} {count === 1 ? "trecho" : "trechos"}
+                            {name} · {t.result.segmentsCount(count)}
                         </span>
                     ))}
                 </div>
@@ -207,7 +210,7 @@ function SegmentsView({
                         ))}
                     </div>
                 ) : (
-                    <Waiting busy={busy} text={busy ? "Os trechos aparecem aqui assim que a transcrição começar." : "Nenhum trecho."} />
+                    <Waiting busy={busy} text={busy ? t.result.segmentsWaiting : t.result.noSegments} />
                 )}
             </div>
         </div>
@@ -231,52 +234,51 @@ export function TranscriptResult({
     tookSeconds: number | null
     onClear: () => void
 }) {
+    const { t, fmt } = useI18n()
     const [tab, setTab] = useState<ResultTab>("text")
     const textScroll = useStickToBottom<HTMLDivElement>(text.length, job.jobId)
     const done = job.phase === "done"
     const extraFiles = done && job.jobId ? Object.keys(job.files).filter((format) => format !== "txt") : []
-    const language = languageName(job.language)
+    const language = fmt.languageName(job.language)
     const subtitle = busy
-        ? "O texto vai aparecendo enquanto transcreve."
+        ? t.result.subtitleBusy
         : done
-          ? "Pronto. Copie ou baixe o texto."
+          ? t.result.subtitleDone
           : job.phase === "canceled"
-            ? "Transcrição cancelada. Este é o texto que deu tempo de sair."
-            : "A transcrição parou com erro. Este é o texto que deu tempo de sair."
+            ? t.result.subtitleCanceled
+            : t.result.subtitleError
 
     return (
         <motion.div {...cardEnter}>
-            <Panel title="Texto" subtitle={subtitle} icon={FileText}>
+            <Panel title={t.result.title} subtitle={subtitle} icon={FileText}>
                 <div className="grid gap-4">
                     <div className="flex flex-wrap items-center gap-2">
                         <CopyButton text={text} />
-                        <SaveTextButton text={text} fileName={`${fileBase}.txt`} label="Baixar .txt" />
+                        <SaveTextButton text={text} fileName={`${fileBase}.txt`} label={t.result.downloadTxt} />
                         {extraFiles.map((format) => (
                             <JobFileButton key={format} jobId={job.jobId as string} format={format} fileName={`${fileBase}.${format}`} />
                         ))}
                         {!busy ? (
                             <Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={onClear}>
                                 <X className="size-4" />
-                                Limpar resultado
+                                {t.result.clear}
                             </Button>
                         ) : null}
                     </div>
 
                     {done ? (
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                            <Metric label="Idioma" value={language ?? "—"} />
-                            <Metric label="Áudio" value={job.duration ? formatClock(job.duration) : "—"} />
-                            <Metric label="Levou" value={tookSeconds !== null ? formatClock(tookSeconds) : "—"} />
-                            <Metric label="Modelo" value={modelName ?? "—"} />
+                            <Metric label={t.result.language} value={language ?? "—"} />
+                            <Metric label={t.result.audio} value={job.duration ? formatClock(job.duration) : "—"} />
+                            <Metric label={t.result.took} value={tookSeconds !== null ? formatClock(tookSeconds) : "—"} />
+                            <Metric label={t.result.model} value={modelName ?? "—"} />
                         </div>
                     ) : null}
 
                     {done && job.degraded.length ? (
                         <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
-                            Algumas partes não rodaram: {degradedLabels(job.degraded).join(", ")}. O texto saiu mesmo assim.
-                            {job.degraded.includes("diarize")
-                                ? " Para separar quem fala, informe um token da Hugging Face e aceite os termos do pyannote no site dela."
-                                : null}
+                            {t.result.degraded(degradedLabels(t, job.degraded).join(", "))}
+                            {job.degraded.includes("diarize") ? t.result.diarizeHint : null}
                         </div>
                     ) : null}
 
@@ -284,8 +286,8 @@ export function TranscriptResult({
                         value={tab}
                         onChange={setTab}
                         options={[
-                            { value: "text", label: "Texto corrido" },
-                            { value: "segments", label: `Por trecho (${job.segments.length})` },
+                            { value: "text", label: t.result.tabText },
+                            { value: "segments", label: t.result.tabSegments(job.segments.length) },
                         ]}
                     />
 
@@ -298,21 +300,14 @@ export function TranscriptResult({
                             {text ? (
                                 <p className="whitespace-pre-wrap break-words text-[15px] leading-7">{text}</p>
                             ) : (
-                                <Waiting
-                                    busy={busy}
-                                    text={
-                                        busy
-                                            ? "O texto aparece aqui assim que a primeira frase sair."
-                                            : "Não saiu nenhum texto. O áudio pode estar sem fala ou muito baixo."
-                                    }
-                                />
+                                <Waiting busy={busy} text={busy ? t.result.textWaiting : t.result.noText} />
                             )}
                         </div>
                     </div>
 
                     <div className={cn(tab !== "segments" && "hidden")}>
                         <SegmentsView
-                            key={job.jobId ?? "sem-job"}
+                            key={job.jobId ?? "no-job"}
                             jobId={job.jobId}
                             segments={job.segments}
                             busy={busy}

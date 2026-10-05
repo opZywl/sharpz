@@ -3,6 +3,7 @@
 import { motion } from "framer-motion"
 import { Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useI18n } from "@/lib/i18n/provider"
 import { cn } from "@/lib/utils"
 
 interface ResultCardProps {
@@ -24,6 +25,7 @@ export function ResultCard({
     delay = 0,
     transparent,
 }: ResultCardProps) {
+    const { t } = useI18n()
     return (
         <motion.div
             initial={{ opacity: 0, y: 16 }}
@@ -41,7 +43,7 @@ export function ResultCard({
                 <Button asChild size="sm" variant="outline">
                     <a href={downloadHref} download={downloadName}>
                         <Download className="size-3.5" />
-                        Download
+                        {t.common.download}
                     </a>
                 </Button>
             </div>

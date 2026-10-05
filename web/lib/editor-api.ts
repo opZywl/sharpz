@@ -1,4 +1,4 @@
-import { responseError } from "@/lib/dashboard-utils"
+import { apiFetch, responseError } from "@/lib/dashboard-utils"
 
 export type ElType = "text" | "icon" | "rect" | "line" | "image"
 
@@ -44,7 +44,7 @@ export async function importDoc(file: File, renderBg = false): Promise<EditorDoc
     const fd = new FormData()
     fd.append("file", file)
     fd.append("render_bg", String(renderBg))
-    const res = await fetch(`${BASE}/import`, { method: "POST", body: fd })
+    const res = await apiFetch(`${BASE}/import`, { method: "POST", body: fd })
     if (!res.ok) throw await responseError(res)
     return (await res.json()) as EditorDoc
 }
@@ -54,7 +54,7 @@ export async function exportPdf(doc: {
     theme: "light" | "dark"
     elements: EditorElement[]
 }): Promise<Blob> {
-    const res = await fetch(`${BASE}/export`, {
+    const res = await apiFetch(`${BASE}/export`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(doc),
@@ -64,7 +64,7 @@ export async function exportPdf(doc: {
 }
 
 export async function renderHtml(html: string): Promise<Blob> {
-    const res = await fetch(`${BASE}/render-html`, {
+    const res = await apiFetch(`${BASE}/render-html`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ html }),
@@ -74,7 +74,7 @@ export async function renderHtml(html: string): Promise<Blob> {
 }
 
 export async function renderPng(html: string, w: number, h: number): Promise<Blob> {
-    const res = await fetch(`${BASE}/render-png`, {
+    const res = await apiFetch(`${BASE}/render-png`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ html, w, h, scale: 2 }),

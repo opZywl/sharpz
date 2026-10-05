@@ -1,3 +1,5 @@
+import { LocalizedError, langHeaders } from "@/lib/i18n"
+
 export function pngData(base64: string) {
     return `data:image/png;base64,${base64}`
 }
@@ -18,6 +20,12 @@ export function appendFields(fd: FormData, fields: Record<string, string | numbe
     Object.entries(fields).forEach(([key, value]) => fd.append(key, String(value)))
 }
 
+export function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers)
+    Object.entries(langHeaders()).forEach(([name, value]) => headers.set(name, value))
+    return fetch(input, { ...init, headers })
+}
+
 function errorDetail(text: string): unknown {
     try {
         return JSON.parse(text)?.detail
@@ -34,31 +42,26 @@ export async function responseError(response: Response): Promise<Error> {
         const fields = detail
             .map((item) => (Array.isArray(item?.loc) ? item.loc[item.loc.length - 1] : null))
             .filter((field): field is string => typeof field === "string")
-        return new Error(
-            fields.length ? `Preencha os campos obrigatórios: ${fields.join(", ")}.` : "Dados inválidos no formulário.",
+        return new LocalizedError((t) =>
+            fields.length ? t.errors.requiredFields(fields.join(", ")) : t.errors.invalidForm,
         )
     }
     if (response.status >= 500) {
-        return new Error(
-            `O servidor não respondeu (HTTP ${response.status}). Ele pode estar desligado ou ter demorado demais; confira se o Sharpz está rodando e tente de novo.`,
-        )
+        const status = response.status
+        return new LocalizedError((t) => t.errors.serverDown(status))
     }
-    return new Error(text || `Erro HTTP ${response.status}.`)
+    if (text) return new Error(text)
+    const status = response.status
+    return new LocalizedError((t) => t.errors.http(status))
 }
 
 export async function postForm<T>(url: string, fd: FormData): Promise<T> {
     let response: Response
     try {
-        response = await fetch(url, { method: "POST", body: fd })
+        response = await apiFetch(url, { method: "POST", body: fd })
     } catch {
-        throw new Error("Não consegui falar com o servidor do Sharpz. Confira se ele está rodando e tente de novo.")
+        throw new LocalizedError((t) => t.errors.network)
     }
     if (!response.ok) throw await responseError(response)
     return (await response.json()) as T
-}
-
-export function formatBytes(bytes: number) {
-    if (!bytes) return "0 KB"
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }

@@ -1,3 +1,4 @@
+import { LocalizedError, dictionaries, pick, type Message, type Messages } from "@/lib/i18n"
 import type { TranscribeModel, TranscribeSegment } from "@/lib/transcribe-api"
 
 export const MEDIA_EXTENSIONS = [
@@ -20,27 +21,23 @@ export const MEDIA_EXTENSIONS = [
 
 export const MEDIA_ACCEPT = ["audio/*", "video/*", ...MEDIA_EXTENSIONS.map((ext) => `.${ext}`)].join(",")
 
-export const MEDIA_HINT = "Áudio do WhatsApp (.ogg, .opus), mp3, m4a, wav, mp4, mkv, mov, webm e outros"
-
 export const QUALITY_MODEL = "large-v3"
 export const FAST_MODEL = "large-v3-turbo"
 
-export const LANGUAGE_OPTIONS: Array<{ value: string; label: string }> = [
-    { value: "pt", label: "Português" },
-    { value: "auto", label: "Detectar automaticamente" },
-    { value: "en", label: "Inglês" },
-    { value: "es", label: "Espanhol" },
-    { value: "fr", label: "Francês" },
-    { value: "de", label: "Alemão" },
-    { value: "it", label: "Italiano" },
-]
+export const LANGUAGE_CODES = ["pt", "auto", "en", "es", "fr", "de", "it"] as const
+
+export type LanguageCode = (typeof LANGUAGE_CODES)[number]
+
+export function languageOptions(t: Messages): Array<{ value: string; label: string }> {
+    return LANGUAGE_CODES.map((value) => ({ value, label: t.transcribe.languages[value] }))
+}
 
 export const FORMAT_OPTIONS = [
-    { key: "txt", label: "TXT", helper: "Texto corrido. Sempre gerado." },
-    { key: "srt", label: "SRT", helper: "Legenda para vídeo." },
-    { key: "vtt", label: "VTT", helper: "Legenda para web." },
-    { key: "json", label: "JSON", helper: "Trechos com tempos." },
-    { key: "lrc", label: "LRC", helper: "Letra com tempo." },
+    { key: "txt", label: "TXT" },
+    { key: "srt", label: "SRT" },
+    { key: "vtt", label: "VTT" },
+    { key: "json", label: "JSON" },
+    { key: "lrc", label: "LRC" },
 ] as const
 
 export type FormatKey = (typeof FORMAT_OPTIONS)[number]["key"]
@@ -56,72 +53,17 @@ export const MODEL_FALLBACK: TranscribeModel[] = [
     { key: "distil-large-v3", label: "Distil Large v3", downloaded: false, is_default: false, english_only: true },
 ]
 
-const STAGE_LABELS: Record<string, string> = {
-    uploading: "Enviando",
-    start: "Preparando",
-    queued: "Na fila",
-    download: "Baixando o áudio do link",
-    download_model: "Baixando o modelo (só na primeira vez)",
-    load_model: "Carregando o modelo",
-    transcribe: "Transcrevendo",
-    align: "Ajustando o tempo das palavras",
-    diarize: "Separando quem fala",
-    write: "Salvando os arquivos",
-    audio: "Extraindo o áudio do vídeo",
-    frames: "Capturando quadros do vídeo",
-    contact: "Montando a folha de contato",
-    cenas: "Escolhendo as melhores cenas",
-    transcricao: "Juntando a transcrição ao pacote",
-    docs: "Escrevendo os documentos com IA",
-    entrega: "Montando a pasta final",
-    complete: "Finalizando o pacote",
-    done: "Pronto",
-    error: "Erro",
-    canceled: "Cancelado",
+export function stageLabel(t: Messages, stage: string) {
+    return pick(t.transcribe.stages, stage) ?? t.transcribe.processing
 }
 
-const DEGRADED_LABELS: Record<string, string> = {
-    align: "tempo por palavra",
-    word_timestamps: "tempo por palavra",
-    diarize: "separar quem fala",
-    frames: "quadros do vídeo",
-    contact: "folha de contato",
-    cenas: "escolha de cenas",
-    docs: "documentos com IA",
-    complete: "pacote Complete",
+export function degradedLabels(t: Messages, keys: string[]) {
+    return Array.from(new Set(keys.map((key) => pick(t.transcribe.degraded, key) ?? key)))
 }
 
-export function stageLabel(stage: string) {
-    return STAGE_LABELS[stage] ?? "Processando"
-}
-
-export function degradedLabels(keys: string[]) {
-    return Array.from(new Set(keys.map((key) => DEGRADED_LABELS[key] ?? key)))
-}
-
-export function modelLabel(model: TranscribeModel) {
+export function modelLabel(t: Messages, model: TranscribeModel) {
     const englishOnly = model.english_only ?? model.key.startsWith("distil")
-    return `${model.label}${model.downloaded ? " (baixado)" : ""}${englishOnly ? " (só inglês)" : ""}`
-}
-
-let languageNames: Intl.DisplayNames | null | undefined
-
-export function languageName(code: string | null | undefined) {
-    if (!code) return null
-    if (languageNames === undefined) {
-        try {
-            languageNames = new Intl.DisplayNames(["pt-BR"], { type: "language" })
-        } catch {
-            languageNames = null
-        }
-    }
-    try {
-        const name = languageNames?.of(code)
-        if (name && name.toLowerCase() !== code.toLowerCase()) return name.charAt(0).toUpperCase() + name.slice(1)
-    } catch {
-        return code
-    }
-    return code
+    return `${model.label}${model.downloaded ? t.transcribe.downloadedSuffix : ""}${englishOnly ? t.transcribe.englishOnlySuffix : ""}`
 }
 
 export function formatClock(totalSeconds: number) {
@@ -157,7 +99,7 @@ export function pathTail(path: string) {
     return path.split(/[\\/]/).filter(Boolean).pop() ?? path
 }
 
-export function baseName(name: string) {
+export function baseName(name: string, fallback: string) {
     const tail = pathTail(name)
     const dot = tail.lastIndexOf(".")
     const stem = dot > 0 ? tail.slice(0, dot) : tail
@@ -166,7 +108,7 @@ export function baseName(name: string) {
         .join("")
         .replace(/[<>:"/\\|?*]+/g, "_")
         .trim()
-    return safe || "transcricao"
+    return safe || fallback
 }
 
 export function stripPathQuotes(value: string) {
@@ -239,39 +181,39 @@ export function saveText(text: string, name: string) {
 }
 
 export interface FriendlyError {
-    message: string
+    message: Message
     detail: string | null
 }
 
-const ERROR_HINTS: Array<{ test: RegExp; message: string }> = [
-    {
-        test: /MemoryError|out of memory|bad_alloc|Unable to allocate|mem[oó]ria|paging file|pagina[cç][aã]o|WinError 1455/i,
-        message: "Faltou memória no computador para transcrever. Feche programas pesados e tente de novo no modo Rápido.",
-    },
-    {
-        test: /yt[-_]dlp|baixar o [aá]udio da URL/i,
-        message: "Não consegui baixar o áudio desse link. Confira se ele abre no navegador e se o vídeo é público.",
-    },
-    {
-        test: /ffmpeg/i,
-        message: "O ffmpeg não está disponível, e ele é necessário para ler o áudio. Rode o sharpz.cmd e escolha Instalar.",
-    },
-    {
-        test: /Caminho local n[aã]o encontrado|Arquivo n[aã]o encontrado|No such file|FileNotFoundError/i,
-        message: "Não encontrei o arquivo. Confira o caminho e tente de novo.",
-    },
-    {
-        test: /Failed to fetch|NetworkError|Load failed/i,
-        message: "Sem resposta do servidor do Sharpz. Confira se ele está rodando e tente de novo.",
-    },
+type HintKey = keyof Messages["errors"]["hints"]
+
+const HINT_PATTERNS: Array<{ key: HintKey; pattern: string }> = [
+    { key: "memory", pattern: "MemoryError|out of memory|bad_alloc|Unable to allocate|paging file|WinError 1455" },
+    { key: "download", pattern: "yt[-_]dlp" },
+    { key: "ffmpeg", pattern: "ffmpeg" },
+    { key: "notFound", pattern: "No such file|FileNotFoundError" },
+    { key: "network", pattern: "Failed to fetch|NetworkError|Load failed" },
 ]
 
-export function friendlyError(raw: unknown, fallback: string): FriendlyError {
+const ERROR_HINTS = HINT_PATTERNS.map(({ key, pattern }) => {
+    const localized = Object.values(dictionaries)
+        .map((messages) => pick(messages.errors.serverPatterns, key))
+        .filter((value): value is string => Boolean(value))
+    return { key, test: new RegExp([pattern, ...localized].join("|"), "i") }
+})
+
+export function friendlyError(raw: unknown, fallback: Message): FriendlyError {
     const text = (raw instanceof Error ? raw.message : typeof raw === "string" ? raw : "").trim()
     if (!text) return { message: fallback, detail: null }
     const hint = ERROR_HINTS.find((entry) => entry.test.test(text))
-    if (hint) return { message: hint.message, detail: text === hint.message ? null : text }
+    if (hint) {
+        const key = hint.key
+        const sameAsHint = Object.values(dictionaries).some((messages) => messages.errors.hints[key] === text)
+        return { message: (t) => t.errors.hints[key], detail: sameAsHint ? null : text }
+    }
     const firstLine = text.split(/\r?\n/).find((line) => line.trim())?.trim() ?? text
-    if (firstLine === text && text.length <= 280) return { message: text, detail: null }
+    if (firstLine === text && text.length <= 280) {
+        return { message: raw instanceof LocalizedError ? raw.text : text, detail: null }
+    }
     return { message: firstLine.length > 280 ? `${firstLine.slice(0, 280)}...` : firstLine, detail: text }
 }

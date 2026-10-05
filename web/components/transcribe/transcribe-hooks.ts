@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import type { Store } from "@/components/transcribe/transcribe-utils"
+import type { Message } from "@/lib/i18n"
 
 export function usePersistentState<T>(fallback: T, store: Store<T>) {
     const [value, setValue] = useState<T>(fallback)
@@ -64,13 +65,17 @@ export function useStickToBottom<T extends HTMLElement>(trigger: unknown, resetK
     return { ref, onScroll }
 }
 
-function recordingName() {
+function recordingName(prefix: string) {
     const now = new Date()
     const pad = (value: number) => String(value).padStart(2, "0")
-    return `gravacao-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.webm`
+    return `${prefix}-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.webm`
 }
 
-export function useMicRecorder(onRecorded: (file: File) => void, onError: (message: string) => void) {
+export function useMicRecorder(
+    onRecorded: (file: File) => void,
+    onError: (message: Message) => void,
+    namePrefix: string,
+) {
     const [recording, setRecording] = useState(false)
     const [seconds, setSeconds] = useState(0)
     const recorderRef = useRef<MediaRecorder | null>(null)
@@ -81,6 +86,7 @@ export function useMicRecorder(onRecorded: (file: File) => void, onError: (messa
     const aliveRef = useRef(true)
     const onRecordedRef = useLatest(onRecorded)
     const onErrorRef = useLatest(onError)
+    const namePrefixRef = useLatest(namePrefix)
 
     const release = useCallback(() => {
         if (timerRef.current) window.clearInterval(timerRef.current)
@@ -92,7 +98,7 @@ export function useMicRecorder(onRecorded: (file: File) => void, onError: (messa
     const start = useCallback(async () => {
         if (recorderRef.current || startingRef.current) return
         if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-            onErrorRef.current("Este navegador não deixa gravar do microfone.")
+            onErrorRef.current((t) => t.mic.unsupported)
             return
         }
         startingRef.current = true
@@ -114,8 +120,8 @@ export function useMicRecorder(onRecorded: (file: File) => void, onError: (messa
                 const blob = new Blob(chunksRef.current, { type })
                 chunksRef.current = []
                 release()
-                if (blob.size > 0) onRecordedRef.current(new File([blob], recordingName(), { type }))
-                else onErrorRef.current("A gravação ficou vazia. Confira o microfone e tente de novo.")
+                if (blob.size > 0) onRecordedRef.current(new File([blob], recordingName(namePrefixRef.current), { type }))
+                else onErrorRef.current((t) => t.mic.empty)
             }
             recorderRef.current = recorder
             recorder.start()
@@ -125,16 +131,16 @@ export function useMicRecorder(onRecorded: (file: File) => void, onError: (messa
         } catch (err) {
             release()
             if (err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError")) {
-                onErrorRef.current("O navegador bloqueou o microfone. Libere o acesso ao microfone para gravar.")
+                onErrorRef.current((t) => t.mic.blocked)
             } else if (err instanceof DOMException && err.name === "NotFoundError") {
-                onErrorRef.current("Nenhum microfone foi encontrado.")
+                onErrorRef.current((t) => t.mic.notFound)
             } else {
-                onErrorRef.current("Não consegui começar a gravar do microfone.")
+                onErrorRef.current((t) => t.mic.failed)
             }
         } finally {
             startingRef.current = false
         }
-    }, [onErrorRef, onRecordedRef, release])
+    }, [namePrefixRef, onErrorRef, onRecordedRef, release])
 
     const stop = useCallback(() => {
         const recorder = recorderRef.current

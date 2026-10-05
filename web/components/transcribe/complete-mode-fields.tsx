@@ -4,6 +4,7 @@ import { CheckboxRow, TextField } from "@/components/dashboard/primitives"
 import { usePersistentState } from "@/components/transcribe/transcribe-hooks"
 import { readStorage, writeStorage, type Store } from "@/components/transcribe/transcribe-utils"
 import { appendFields } from "@/lib/dashboard-utils"
+import { useI18n } from "@/lib/i18n/provider"
 
 export interface CompleteSettings {
     enabled: boolean
@@ -88,26 +89,27 @@ export function CompleteModeFields({
     settings: CompleteSettings
     onChange: (patch: Partial<CompleteSettings>) => void
 }) {
+    const { t } = useI18n()
     return (
         <div className="grid gap-3 rounded-xl border border-foreground/10 p-3">
             <CheckboxRow
                 checked={settings.enabled}
                 onChange={(enabled) => onChange({ enabled })}
-                label="Modo Complete"
-                helper="Além do texto, gera quadros do vídeo, folha de contato, imagens das cenas e documentos (README, FEEDBACK, SPEC) de uma vez. Bem mais pesado."
+                label={t.completeFields.title}
+                helper={t.completeFields.helper}
             />
             {settings.enabled ? (
                 <div className="grid gap-3">
                     <div className="grid gap-3 md:grid-cols-2">
                         <TextField
-                            label="Um quadro a cada (segundos)"
+                            label={t.completeFields.frameInterval}
                             value={settings.frameInterval}
                             onChange={(frameInterval) => onChange({ frameInterval })}
                             placeholder="3"
                             type="number"
                         />
                         <TextField
-                            label="Sensibilidade de troca de cena"
+                            label={t.completeFields.sceneThreshold}
                             value={settings.sceneThreshold}
                             onChange={(sceneThreshold) => onChange({ sceneThreshold })}
                             placeholder="0.30"
@@ -117,27 +119,27 @@ export function CompleteModeFields({
                     <CheckboxRow
                         checked={settings.genDocs}
                         onChange={(genDocs) => onChange({ genDocs })}
-                        label="Gerar documentos com IA de visão"
-                        helper="Manda a folha de contato, as cenas e a transcrição para um modelo multimodal, que escreve README, FEEDBACK e SPEC."
+                        label={t.completeFields.genDocs}
+                        helper={t.completeFields.genDocsHelper}
                     />
                     {settings.genDocs ? (
                         <div className="grid gap-3">
                             <div className="grid gap-3 md:grid-cols-2">
                                 <TextField
-                                    label="Endereço da IA de visão (base URL)"
+                                    label={t.completeFields.visionUrl}
                                     value={settings.visionBaseUrl}
                                     onChange={(visionBaseUrl) => onChange({ visionBaseUrl })}
                                     placeholder={DEFAULT_VISION_BASE_URL}
                                 />
                                 <TextField
-                                    label="Modelo de visão"
+                                    label={t.completeFields.visionModel}
                                     value={settings.visionModel}
                                     onChange={(visionModel) => onChange({ visionModel })}
                                     placeholder={DEFAULT_VISION_MODEL}
                                 />
                             </div>
                             <TextField
-                                label="Chave da IA de visão (opcional)"
+                                label={t.completeFields.visionKey}
                                 value={settings.visionApiKey}
                                 onChange={(visionApiKey) => onChange({ visionApiKey })}
                                 placeholder="sk-..."
@@ -147,24 +149,24 @@ export function CompleteModeFields({
                     ) : null}
                     <div className="grid gap-3 md:grid-cols-2">
                         <TextField
-                            label="Nome da pasta"
+                            label={t.completeFields.folderName}
                             value={settings.outputName}
                             onChange={(outputName) => onChange({ outputName })}
-                            placeholder="automático (a IA sugere)"
+                            placeholder={t.completeFields.folderNamePlaceholder}
                         />
                         <TextField
-                            label="Pasta de saída (opcional)"
+                            label={t.fields.outputFolderOptional}
                             value={settings.outputDir}
                             onChange={(outputDir) => onChange({ outputDir })}
-                            placeholder="C:\caminho\para\pasta"
+                            placeholder={t.placeholders.folderWindows}
                         />
                     </div>
                     <div className="grid gap-2 md:grid-cols-2">
-                        <CheckboxRow checked={settings.makeZip} onChange={(makeZip) => onChange({ makeZip })} label="Gerar .zip" />
+                        <CheckboxRow checked={settings.makeZip} onChange={(makeZip) => onChange({ makeZip })} label={t.completeFields.zip} />
                         <CheckboxRow
                             checked={settings.openFolder}
                             onChange={(openFolder) => onChange({ openFolder })}
-                            label="Abrir a pasta ao terminar"
+                            label={t.completeFields.openFolder}
                         />
                     </div>
                 </div>

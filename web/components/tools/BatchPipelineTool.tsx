@@ -29,12 +29,15 @@ import {
     PathMode,
 } from "@/lib/dashboard-types"
 import { appendFields, postForm } from "@/lib/dashboard-utils"
+import { errorText } from "@/lib/i18n"
+import { useI18n, useMessage } from "@/lib/i18n/provider"
 
 export function BatchPipelineTool() {
     const { defaultModel } = useDashboard()
+    const { t, fmt, resolve } = useI18n()
 
     const [busy, setBusy] = useState(false)
-    const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useMessage()
     const [result, setResult] = useState<BatchPipelineResult | null>(null)
 
     const [batchPipeline, setBatchPipeline] = useState({
@@ -117,7 +120,7 @@ export function BatchPipelineTool() {
             setResult(data)
             if (!data.success) setError(data.summary)
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Erro inesperado no batch pipeline.")
+            setError(errorText(err, (m) => m.batch.unexpected))
         } finally {
             setBusy(false)
         }
@@ -129,62 +132,62 @@ export function BatchPipelineTool() {
                 <div className="app-alert rounded-xl px-4 py-3 text-sm">
                     <div className="flex gap-2">
                         <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                        <span className="whitespace-pre-wrap">{error}</span>
+                        <span className="whitespace-pre-wrap">{resolve(error)}</span>
                     </div>
                 </div>
             ) : null}
 
             <motion.div {...cardEnter}>
-                <Panel title="Batch Pipeline" subtitle="Processa uma pasta inteira de imagens. Use o caminho completo da pasta neste computador." icon={FolderOpen}>
+                <Panel title={t.batch.title} subtitle={t.batch.subtitle} icon={FolderOpen}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
-                            <TextField label="Pasta de entrada" value={batchPipeline.inputPath} onChange={(inputPath) => setBatchPipeline((current) => ({ ...current, inputPath }))} placeholder="C:/caminho/para/imagens" />
-                            <TextField label="Pasta de saída" value={batchPipeline.outputPath} onChange={(outputPath) => setBatchPipeline((current) => ({ ...current, outputPath }))} placeholder="C:/caminho/para/saida" />
+                            <TextField label={t.fields.inputFolder} value={batchPipeline.inputPath} onChange={(inputPath) => setBatchPipeline((current) => ({ ...current, inputPath }))} placeholder={t.placeholders.imagesFolder} />
+                            <TextField label={t.fields.outputFolder} value={batchPipeline.outputPath} onChange={(outputPath) => setBatchPipeline((current) => ({ ...current, outputPath }))} placeholder={t.placeholders.outputFolder} />
                         </div>
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                            <SelectField label="Método" value={batchPipeline.method} options={methodOptions} onChange={(method) => setBatchPipeline((current) => ({ ...current, method }))} />
+                            <SelectField label={t.fields.method} value={batchPipeline.method} options={methodOptions(t)} onChange={(method) => setBatchPipeline((current) => ({ ...current, method }))} />
                             <ModelField value={batchPipeline.model ?? defaultModel} onChange={(model) => setBatchPipeline((current) => ({ ...current, model }))} />
-                            <SelectField label="Modo SVG" value={batchPipeline.colorMode} options={colorModeOptions} onChange={(colorMode) => setBatchPipeline((current) => ({ ...current, colorMode }))} />
-                            <ColorField label="Fundo SVG" value={batchPipeline.flattenColor} onChange={(flattenColor) => setBatchPipeline((current) => ({ ...current, flattenColor }))} />
+                            <SelectField label={t.fields.svgMode} value={batchPipeline.colorMode} options={colorModeOptions(t)} onChange={(colorMode) => setBatchPipeline((current) => ({ ...current, colorMode }))} />
+                            <ColorField label={t.fields.svgBg} value={batchPipeline.flattenColor} onChange={(flattenColor) => setBatchPipeline((current) => ({ ...current, flattenColor }))} />
                         </div>
                         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                            <Slider label="Luma mínimo" value={batchPipeline.lumaLow} min={0} max={0.5} step={0.01} onChange={(lumaLow) => setBatchPipeline((current) => ({ ...current, lumaLow }))} />
-                            <Slider label="Luma máximo" value={batchPipeline.lumaHigh} min={0.5} max={1} step={0.01} onChange={(lumaHigh) => setBatchPipeline((current) => ({ ...current, lumaHigh }))} />
-                            <Slider label="Gamma" value={batchPipeline.lumaGamma} min={0.3} max={3} step={0.1} onChange={(lumaGamma) => setBatchPipeline((current) => ({ ...current, lumaGamma }))} />
-                            <Slider label="Redução de ruído" value={batchPipeline.lumaDenoise} min={0} max={7} step={1} onChange={(lumaDenoise) => setBatchPipeline((current) => ({ ...current, lumaDenoise }))} />
-                            <Slider label="Ampliar antes" value={batchPipeline.upscale} min={1} max={3} step={0.25} onChange={(upscale) => setBatchPipeline((current) => ({ ...current, upscale }))} />
+                            <Slider label={t.fields.lumaLow} value={batchPipeline.lumaLow} min={0} max={0.5} step={0.01} onChange={(lumaLow) => setBatchPipeline((current) => ({ ...current, lumaLow }))} />
+                            <Slider label={t.fields.lumaHigh} value={batchPipeline.lumaHigh} min={0.5} max={1} step={0.01} onChange={(lumaHigh) => setBatchPipeline((current) => ({ ...current, lumaHigh }))} />
+                            <Slider label={t.fields.gamma} value={batchPipeline.lumaGamma} min={0.3} max={3} step={0.1} onChange={(lumaGamma) => setBatchPipeline((current) => ({ ...current, lumaGamma }))} />
+                            <Slider label={t.fields.denoise} value={batchPipeline.lumaDenoise} min={0} max={7} step={1} onChange={(lumaDenoise) => setBatchPipeline((current) => ({ ...current, lumaDenoise }))} />
+                            <Slider label={t.fields.upscale} value={batchPipeline.upscale} min={1} max={3} step={0.25} onChange={(upscale) => setBatchPipeline((current) => ({ ...current, upscale }))} />
                         </div>
                         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                            <Slider label="Saturação" value={batchPipeline.saturation} min={0.5} max={2} step={0.05} onChange={(saturation) => setBatchPipeline((current) => ({ ...current, saturation }))} />
-                            <Slider label="Contraste" value={batchPipeline.contrast} min={0.5} max={2} step={0.05} onChange={(contrast) => setBatchPipeline((current) => ({ ...current, contrast }))} />
-                            <Slider label="Brilho" value={batchPipeline.brightness} min={0.5} max={2} step={0.05} onChange={(brightness) => setBatchPipeline((current) => ({ ...current, brightness }))} />
-                            <Slider label="Remover manchas" value={batchPipeline.filterSpeckle} min={0} max={20} step={1} onChange={(filterSpeckle) => setBatchPipeline((current) => ({ ...current, filterSpeckle }))} />
-                            <Slider label="Precisão de cor" value={batchPipeline.colorPrecision} min={1} max={8} step={1} onChange={(colorPrecision) => setBatchPipeline((current) => ({ ...current, colorPrecision }))} />
+                            <Slider label={t.fields.saturation} value={batchPipeline.saturation} min={0.5} max={2} step={0.05} onChange={(saturation) => setBatchPipeline((current) => ({ ...current, saturation }))} />
+                            <Slider label={t.fields.contrast} value={batchPipeline.contrast} min={0.5} max={2} step={0.05} onChange={(contrast) => setBatchPipeline((current) => ({ ...current, contrast }))} />
+                            <Slider label={t.fields.brightness} value={batchPipeline.brightness} min={0.5} max={2} step={0.05} onChange={(brightness) => setBatchPipeline((current) => ({ ...current, brightness }))} />
+                            <Slider label={t.fields.filterSpeckle} value={batchPipeline.filterSpeckle} min={0} max={20} step={1} onChange={(filterSpeckle) => setBatchPipeline((current) => ({ ...current, filterSpeckle }))} />
+                            <Slider label={t.fields.colorPrecision} value={batchPipeline.colorPrecision} min={1} max={8} step={1} onChange={(colorPrecision) => setBatchPipeline((current) => ({ ...current, colorPrecision }))} />
                         </div>
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                            <CheckboxRow checked={batchPipeline.recursive} onChange={(recursive) => setBatchPipeline((current) => ({ ...current, recursive }))} label="Recursivo" />
-                            <CheckboxRow checked={batchPipeline.alphaMatting} onChange={(alphaMatting) => setBatchPipeline((current) => ({ ...current, alphaMatting }))} label="Alpha matting" helper="Refina bordas na IA (mais lento)." />
-                            <CheckboxRow checked={batchPipeline.noSvg} onChange={(noSvg) => setBatchPipeline((current) => ({ ...current, noSvg }))} label="Sem SVG" helper="Gera apenas PNG limpo." />
-                            <CheckboxRow checked={batchPipeline.noBgRemoval} onChange={(noBgRemoval) => setBatchPipeline((current) => ({ ...current, noBgRemoval }))} label="Sem remover fundo" helper="Apenas vetoriza." />
-                            <CheckboxRow checked={batchPipeline.edgeSmooth} onChange={(edgeSmooth) => setBatchPipeline((current) => ({ ...current, edgeSmooth }))} label="Suavizar borda" />
+                            <CheckboxRow checked={batchPipeline.recursive} onChange={(recursive) => setBatchPipeline((current) => ({ ...current, recursive }))} label={t.fields.recursive} />
+                            <CheckboxRow checked={batchPipeline.alphaMatting} onChange={(alphaMatting) => setBatchPipeline((current) => ({ ...current, alphaMatting }))} label={t.fields.alphaMatting} helper={t.fields.alphaMattingHelper} />
+                            <CheckboxRow checked={batchPipeline.noSvg} onChange={(noSvg) => setBatchPipeline((current) => ({ ...current, noSvg }))} label={t.batch.noSvg} helper={t.batch.noSvgHelper} />
+                            <CheckboxRow checked={batchPipeline.noBgRemoval} onChange={(noBgRemoval) => setBatchPipeline((current) => ({ ...current, noBgRemoval }))} label={t.options.method.no_bg_removal} helper={t.batch.noBgHelper} />
+                            <CheckboxRow checked={batchPipeline.edgeSmooth} onChange={(edgeSmooth) => setBatchPipeline((current) => ({ ...current, edgeSmooth }))} label={t.fields.edgeSmooth} />
                         </div>
                         <Button onClick={runBatchPipeline} disabled={busy} size="lg" className="w-full">
                             {busy ? <Loader2 className="size-4 animate-spin" /> : <FolderOpen className="size-4" />}
-                            Processar pasta
+                            {t.batch.run}
                         </Button>
                     </div>
                 </Panel>
             </motion.div>
 
             <motion.div {...cardEnter}>
-                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de página." icon={Activity}>
+                <Panel title={t.common.result} subtitle={t.common.resultSubtitle} icon={Activity}>
                     {result ? (
                         <div className="space-y-4">
                             <div className="grid gap-3 md:grid-cols-4">
-                                <Metric label="Status" value={result.success ? "OK" : "Falha"} />
-                                <Metric label="Total" value={String(result.total)} />
-                                <Metric label="Sucesso" value={String(result.success_count)} />
-                                <Metric label="Falhas" value={String(result.failure_count)} helper={result.output_dir ?? undefined} />
+                                <Metric label={t.metrics.status} value={result.success ? t.status.okTitle : t.status.failed} />
+                                <Metric label={t.metrics.total} value={fmt.number(result.total)} />
+                                <Metric label={t.metrics.succeeded} value={fmt.number(result.success_count)} />
+                                <Metric label={t.metrics.failures} value={fmt.number(result.failure_count)} helper={result.output_dir ?? undefined} />
                             </div>
                             <pre className="app-codeblock max-h-64 overflow-auto rounded-xl p-4 text-sm leading-6">
                                 {result.summary}
@@ -195,18 +198,20 @@ export function BatchPipelineTool() {
                                         <div className="min-w-0">
                                             <div className="truncate text-sm font-semibold">{item.input_path}</div>
                                             <div className="app-faint truncate text-xs">
-                                                {item.success ? `${item.outputs.length} arquivo(s) - ${methodLabel(item.method_used) || "ok"}` : item.error}
+                                                {item.success
+                                                    ? t.batch.fileOutputs(item.outputs.length, methodLabel(t, item.method_used) || t.status.ok)
+                                                    : item.error}
                                             </div>
                                         </div>
                                         <span className="status-pill px-2 py-1 text-xs font-semibold" data-tone={item.success ? "good" : "bad"}>
-                                            {item.success ? "ok" : "falha"}
+                                            {item.success ? t.status.ok : t.status.failedLower}
                                         </span>
                                     </div>
                                 ))}
                             </div>
                         </div>
                     ) : (
-                        <EmptyState text="Rode o batch pipeline para ver o resumo de cada arquivo." />
+                        <EmptyState text={t.batch.empty} />
                     )}
                 </Panel>
             </motion.div>

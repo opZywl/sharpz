@@ -7,6 +7,7 @@ import { useEffect, useState } from "react"
 import { EmptyState, Panel, cardEnter } from "@/components/dashboard/primitives"
 import { friendlyError } from "@/components/transcribe/transcribe-utils"
 import { Button } from "@/components/ui/button"
+import { useI18n, useMessage } from "@/lib/i18n/provider"
 import {
     completeFileUrl,
     completeZipUrl,
@@ -16,10 +17,12 @@ import {
 } from "@/lib/transcribe-api"
 
 export function CompletePackagePanel({ jobId, initial }: { jobId: string; initial: CompleteManifest | null }) {
+    const { lang, t, resolve } = useI18n()
+    const [srcLang] = useState(lang)
     const [manifest, setManifest] = useState<CompleteManifest | null>(initial)
     const [loading, setLoading] = useState(!initial)
     const [opening, setOpening] = useState(false)
-    const [folderError, setFolderError] = useState<string | null>(null)
+    const [folderError, setFolderError] = useMessage()
 
     useEffect(() => {
         if (initial) setManifest(initial)
@@ -48,7 +51,7 @@ export function CompletePackagePanel({ jobId, initial }: { jobId: string; initia
         try {
             await openCompleteFolder(jobId)
         } catch (err) {
-            setFolderError(friendlyError(err, "Não consegui abrir a pasta.").message)
+            setFolderError(friendlyError(err, (m) => m.complete.openFailed).message)
         } finally {
             setOpening(false)
         }
@@ -56,11 +59,11 @@ export function CompletePackagePanel({ jobId, initial }: { jobId: string; initia
 
     return (
         <motion.div {...cardEnter}>
-            <Panel title="Pacote Complete" subtitle="Quadros, folha de contato, imagens escolhidas e documentos gerados a partir do vídeo." icon={Wand2}>
+            <Panel title={t.complete.title} subtitle={t.complete.subtitle} icon={Wand2}>
                 {loading && !manifest ? (
                     <div className="flex items-center justify-center gap-2 px-4 py-10 text-center">
                         <Loader2 className="size-4 animate-spin" />
-                        <span className="app-muted text-sm">Montando o pacote (quadros, cenas, documentos)...</span>
+                        <span className="app-muted text-sm">{t.complete.loading}</span>
                     </div>
                 ) : manifest ? (
                     <div className="grid gap-4">
@@ -72,13 +75,13 @@ export function CompletePackagePanel({ jobId, initial }: { jobId: string; initia
                             <div className="flex flex-wrap items-center gap-2">
                                 <Button type="button" variant="outline" onClick={handleOpenFolder} disabled={opening}>
                                     {opening ? <Loader2 className="size-4 animate-spin" /> : <FolderOpen className="size-4" />}
-                                    Abrir pasta
+                                    {t.common.openFolder}
                                 </Button>
                                 {manifest.zip ? (
                                     <Button asChild variant="outline">
-                                        <a href={completeZipUrl(jobId)}>
+                                        <a href={completeZipUrl(jobId, lang)}>
                                             <Archive className="size-4" />
-                                            Baixar .zip
+                                            {t.complete.downloadZip}
                                         </a>
                                     </Button>
                                 ) : null}
@@ -86,12 +89,12 @@ export function CompletePackagePanel({ jobId, initial }: { jobId: string; initia
                         </div>
 
                         {folderError ? (
-                            <div className="app-alert rounded-xl px-4 py-3 text-sm">{folderError}</div>
+                            <div className="app-alert rounded-xl px-4 py-3 text-sm">{resolve(folderError)}</div>
                         ) : null}
 
                         {!manifest.docs_generated ? (
                             <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
-                                Os documentos com IA não foram gerados (IA de visão desligada ou fora do ar). Quadros, cenas e transcrição estão no pacote.
+                                {t.complete.noDocs}
                             </div>
                         ) : null}
 
@@ -99,7 +102,7 @@ export function CompletePackagePanel({ jobId, initial }: { jobId: string; initia
                             <div className="flex flex-wrap items-center gap-2">
                                 {manifest.docs.map((doc) => (
                                     <Button key={doc} asChild variant="outline">
-                                        <a href={completeFileUrl(jobId, doc)} target="_blank" rel="noreferrer">
+                                        <a href={completeFileUrl(jobId, doc, lang)} target="_blank" rel="noreferrer">
                                             <FileText className="size-4" />
                                             {doc}
                                         </a>
@@ -111,7 +114,7 @@ export function CompletePackagePanel({ jobId, initial }: { jobId: string; initia
                         <div className="grid gap-2">
                             <span className="field-label flex items-center gap-2">
                                 <Images className="size-3.5" />
-                                Imagens escolhidas ({manifest.images.length})
+                                {t.complete.images(manifest.images.length)}
                             </span>
                             {manifest.images.length ? (
                                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
@@ -121,13 +124,13 @@ export function CompletePackagePanel({ jobId, initial }: { jobId: string; initia
                                         return (
                                             <a
                                                 key={image}
-                                                href={completeFileUrl(jobId, image)}
+                                                href={completeFileUrl(jobId, image, lang)}
                                                 target="_blank"
                                                 rel="noreferrer"
                                                 className="group preview-card overflow-hidden rounded-lg"
                                             >
                                                 <img
-                                                    src={completeFileUrl(jobId, image)}
+                                                    src={completeFileUrl(jobId, image, srcLang)}
                                                     alt={caption ?? name}
                                                     className="aspect-video w-full object-cover"
                                                     loading="lazy"
@@ -141,12 +144,12 @@ export function CompletePackagePanel({ jobId, initial }: { jobId: string; initia
                                     })}
                                 </div>
                             ) : (
-                                <EmptyState text="Nenhuma imagem escolhida (a entrada era só áudio?)." />
+                                <EmptyState text={t.complete.noImages} />
                             )}
                         </div>
                     </div>
                 ) : (
-                    <EmptyState text="O pacote não está disponível para esta transcrição." />
+                    <EmptyState text={t.complete.unavailable} />
                 )}
             </Panel>
         </motion.div>

@@ -18,12 +18,15 @@ import { ModuleGrid } from "@/components/dashboard/ModuleGrid"
 import { ModuleLanding } from "@/components/dashboard/ModuleLanding"
 import { DashboardShell, cardEnter } from "@/components/dashboard/primitives"
 import { ToolHost } from "@/components/dashboard/ToolHost"
+import { LanguageToggle } from "@/components/language-toggle"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { useI18n } from "@/lib/i18n/provider"
 import { MODULES, ModuleId, TOOLS, ToolId, findToolModule } from "@/lib/modules"
 import { cn } from "@/lib/utils"
 
 function StatusPanel() {
     const { apiStatus, toktxFound, capabilities } = useDashboard()
+    const { t } = useI18n()
 
     return (
         <DashboardShell innerClassName="p-4">
@@ -37,25 +40,25 @@ function StatusPanel() {
                         className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]"
                         data-tone={apiStatus === "online" ? "good" : apiStatus === "offline" ? "bad" : undefined}
                     >
-                        {apiStatus === "checking" ? "verificando" : apiStatus}
+                        {t.status[apiStatus]}
                     </span>
                 </div>
                 <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
                     <span className="app-faint flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em]">
                         <Cpu className="size-3.5" />
-                        Texturas KTX
+                        {t.modules.ktx.title}
                     </span>
                     <span className="text-xs font-semibold">
-                        {toktxFound === null ? "verificando" : toktxFound ? "ok" : "faltando"}
+                        {toktxFound === null ? t.status.checking : toktxFound ? t.status.ok : t.status.missing}
                     </span>
                 </div>
                 <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
                     <span className="app-faint flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em]">
                         <PackageCheck className="size-3.5" />
-                        Portfolio KTX
+                        {t.tools["portfolio-ktx"].title}
                     </span>
                     <span className="text-xs font-semibold">
-                        {capabilities?.alktx2_found ? "ok" : "faltando"}
+                        {capabilities?.alktx2_found ? t.status.ok : t.status.missing}
                     </span>
                 </div>
             </div>
@@ -65,27 +68,29 @@ function StatusPanel() {
 
 function Dashboard() {
     const { apiStatus } = useDashboard()
+    const { t } = useI18n()
 
     const [activeModule, setActiveModule] = useState<ModuleId | null>(null)
     const [activeTool, setActiveTool] = useState<ToolId | null>(null)
     const [search, setSearch] = useState("")
     const [expanded, setExpanded] = useState<Record<ModuleId, boolean>>({
-        imagem: false,
-        vetor: false,
+        image: false,
+        vector: false,
         ktx: false,
-        transcricao: false,
-        documento: false,
-        pacotes: false,
-        sistema: false,
+        transcription: false,
+        document: false,
+        packages: false,
+        system: false,
     })
 
     const searchResults = useMemo(() => {
         const term = search.trim().toLowerCase()
         if (!term) return null
-        return Object.values(TOOLS).filter((tool) =>
-            [tool.title, tool.label, tool.description].join(" ").toLowerCase().includes(term),
-        )
-    }, [search])
+        return Object.values(TOOLS).filter((tool) => {
+            const text = t.tools[tool.id]
+            return [text.title, text.label, text.description].join(" ").toLowerCase().includes(term)
+        })
+    }, [search, t])
 
     function openTool(tool: ToolId) {
         setActiveTool(tool)
@@ -114,8 +119,8 @@ function Dashboard() {
 
     const activeToolMeta = activeTool ? TOOLS[activeTool] : null
     const activeModuleMeta = activeModule ? MODULES.find((module) => module.id === activeModule) ?? null : null
-    const navModules = MODULES.filter((module) => module.id !== "sistema")
-    const systemModule = MODULES.find((module) => module.id === "sistema")
+    const navModules = MODULES.filter((module) => module.id !== "system")
+    const systemModule = MODULES.find((module) => module.id === "system")
 
     return (
         <div className="app-page">
@@ -135,7 +140,7 @@ function Dashboard() {
                                     <h1 className="font-jakarta text-lg font-extrabold uppercase leading-none tracking-tight">
                                         Sharpz
                                     </h1>
-                                    <p className="app-faint mt-1 text-xs">Painel de ferramentas</p>
+                                    <p className="app-faint mt-1 text-xs">{t.nav.subtitle}</p>
                                 </div>
                             </button>
 
@@ -144,7 +149,8 @@ function Dashboard() {
                                 <input
                                     value={search}
                                     onChange={(event) => setSearch(event.target.value)}
-                                    placeholder="Buscar ferramenta..."
+                                    placeholder={t.nav.search}
+                                    aria-label={t.nav.search}
                                     className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                                 />
                             </div>
@@ -154,7 +160,7 @@ function Dashboard() {
                             {searchResults ? (
                                 <div className="space-y-1">
                                     {searchResults.length === 0 ? (
-                                        <p className="app-faint px-3 py-3 text-xs">Nenhuma ferramenta encontrada.</p>
+                                        <p className="app-faint px-3 py-3 text-xs">{t.nav.noResults}</p>
                                     ) : (
                                         searchResults.map((tool) => {
                                             const Icon = tool.icon
@@ -173,10 +179,10 @@ function Dashboard() {
                                                     </span>
                                                     <span className="min-w-0 flex-1">
                                                         <span className="block truncate font-jakarta text-sm font-extrabold uppercase leading-none tracking-tight">
-                                                            {tool.title}
+                                                            {t.tools[tool.id].title}
                                                         </span>
                                                         <span className="app-faint mt-1 block truncate text-xs">
-                                                            {moduleMeta?.title}
+                                                            {moduleMeta ? t.modules[moduleMeta.id].title : null}
                                                         </span>
                                                     </span>
                                                 </button>
@@ -197,9 +203,9 @@ function Dashboard() {
                                         </span>
                                         <span className="min-w-0 flex-1">
                                             <span className="block truncate font-jakarta text-sm font-extrabold uppercase leading-none tracking-tight">
-                                                Início
+                                                {t.nav.home}
                                             </span>
-                                            <span className="app-faint mt-1 block truncate text-xs">Todos os módulos</span>
+                                            <span className="app-faint mt-1 block truncate text-xs">{t.nav.allModules}</span>
                                         </span>
                                     </button>
 
@@ -223,9 +229,9 @@ function Dashboard() {
                                                     </span>
                                                     <span className="min-w-0 flex-1">
                                                         <span className="block truncate font-jakarta text-sm font-extrabold uppercase leading-none tracking-tight">
-                                                            {module.title}
+                                                            {t.modules[module.id].title}
                                                         </span>
-                                                        <span className="app-faint mt-1 block truncate text-xs">{module.label}</span>
+                                                        <span className="app-faint mt-1 block truncate text-xs">{t.modules[module.id].label}</span>
                                                     </span>
                                                     {isOpen ? (
                                                         <ChevronDown className="app-faint size-4 shrink-0" />
@@ -248,7 +254,7 @@ function Dashboard() {
                                                                 >
                                                                     <ToolIcon className={cn("size-3.5 shrink-0", isActive ? tool.accent : "app-faint")} />
                                                                     <span className="min-w-0 flex-1 truncate text-xs font-semibold">
-                                                                        {tool.title}
+                                                                        {t.tools[tool.id].title}
                                                                     </span>
                                                                 </button>
                                                             )
@@ -271,9 +277,9 @@ function Dashboard() {
                                             </span>
                                             <span className="min-w-0 flex-1">
                                                 <span className="block truncate font-jakarta text-sm font-extrabold uppercase leading-none tracking-tight">
-                                                    {systemModule.title}
+                                                    {t.modules[systemModule.id].title}
                                                 </span>
-                                                <span className="app-faint mt-1 block truncate text-xs">{systemModule.label}</span>
+                                                <span className="app-faint mt-1 block truncate text-xs">{t.modules[systemModule.id].label}</span>
                                             </span>
                                         </button>
                                     ) : null}
@@ -298,7 +304,7 @@ function Dashboard() {
                                         className="app-muted inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.16em] transition-colors hover:text-foreground"
                                     >
                                         <Home className="size-3.5" />
-                                        Início
+                                        {t.nav.home}
                                     </button>
                                     {activeModuleMeta ? (
                                         <>
@@ -311,7 +317,7 @@ function Dashboard() {
                                                     activeToolMeta ? "app-muted hover:text-foreground" : "text-foreground",
                                                 )}
                                             >
-                                                {activeModuleMeta.title}
+                                                {t.modules[activeModuleMeta.id].title}
                                             </button>
                                         </>
                                     ) : null}
@@ -319,7 +325,7 @@ function Dashboard() {
                                         <>
                                             <ChevronRight className="app-faint size-3.5 shrink-0" />
                                             <span className="inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.16em] text-foreground">
-                                                {activeToolMeta.title}
+                                                {t.tools[activeToolMeta.id].title}
                                             </span>
                                         </>
                                     ) : null}
@@ -330,8 +336,9 @@ function Dashboard() {
                                         className="status-pill px-3 py-2 text-xs font-semibold"
                                         data-tone={apiStatus === "online" ? "good" : apiStatus === "offline" ? "bad" : undefined}
                                     >
-                                        API {apiStatus === "checking" ? "verificando" : apiStatus}
+                                        API {t.status[apiStatus]}
                                     </span>
+                                    <LanguageToggle />
                                     <ThemeToggle />
                                 </div>
                             </div>

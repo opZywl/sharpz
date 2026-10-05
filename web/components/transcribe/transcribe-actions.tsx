@@ -5,9 +5,11 @@ import { useEffect, useState } from "react"
 
 import { saveBlob, saveText } from "@/components/transcribe/transcribe-utils"
 import { Button } from "@/components/ui/button"
+import { useI18n } from "@/lib/i18n/provider"
 import { downloadUrl, fetchJobFile } from "@/lib/transcribe-api"
 
-export function CopyButton({ text, label = "Copiar tudo" }: { text: string; label?: string }) {
+export function CopyButton({ text, label }: { text: string; label?: string }) {
+    const { t } = useI18n()
     const [state, setState] = useState<"idle" | "copied" | "failed">("idle")
 
     useEffect(() => {
@@ -28,7 +30,7 @@ export function CopyButton({ text, label = "Copiar tudo" }: { text: string; labe
     return (
         <Button type="button" variant="outline" size="sm" onClick={copy} disabled={!text}>
             {state === "copied" ? <ClipboardCheck className="size-4" /> : <Clipboard className="size-4" />}
-            {state === "copied" ? "Copiado" : state === "failed" ? "Não deu para copiar" : label}
+            {state === "copied" ? t.actions.copied : state === "failed" ? t.actions.copyFailed : label ?? t.actions.copyAll}
         </Button>
     )
 }
@@ -43,8 +45,10 @@ export function SaveTextButton({ text, fileName, label }: { text: string; fileNa
 }
 
 export function JobFileButton({ jobId, format, fileName }: { jobId: string; format: string; fileName: string }) {
+    const { lang, t } = useI18n()
     const [state, setState] = useState<"idle" | "saving" | "failed">("idle")
-    const href = downloadUrl(jobId, format)
+    const href = downloadUrl(jobId, format, lang)
+    const formatLabel = format.toUpperCase()
 
     async function save(event: React.MouseEvent<HTMLAnchorElement>) {
         event.preventDefault()
@@ -60,9 +64,9 @@ export function JobFileButton({ jobId, format, fileName }: { jobId: string; form
 
     return (
         <Button asChild variant="outline" size="sm">
-            <a href={href} download={fileName} onClick={save} title={state === "failed" ? "Não consegui baixar. Clique para tentar de novo." : fileName}>
+            <a href={href} download={fileName} onClick={save} title={state === "failed" ? t.actions.downloadFailed : fileName}>
                 {state === "saving" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-                {state === "failed" ? `${format.toUpperCase()} (tentar de novo)` : format.toUpperCase()}
+                {state === "failed" ? t.actions.retry(formatLabel) : formatLabel}
             </a>
         </Button>
     )

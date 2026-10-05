@@ -1,3 +1,5 @@
+import type { Messages } from "@/lib/i18n"
+
 export type Method = "auto" | "ai" | "luma_dark" | "luma_light" | "none"
 export type ColorMode = "color" | "binary"
 export type Hierarchical = "stacked" | "cutout"
@@ -124,31 +126,28 @@ export interface CapabilityInfo {
 export const DEFAULT_MODEL = "isnet-general-use"
 export const DEFAULT_KTX_PRESET = "ultra"
 
-export const methodOptions: Array<{ value: Method; label: string }> = [
-    { value: "auto", label: "Auto" },
-    { value: "luma_dark", label: "Fundo escuro (luma)" },
-    { value: "luma_light", label: "Fundo claro (luma)" },
-    { value: "ai", label: "IA" },
-    { value: "none", label: "Sem remoção" },
-]
+const METHODS: Method[] = ["auto", "luma_dark", "luma_light", "ai", "none"]
+const COLOR_MODES: ColorMode[] = ["color", "binary"]
+const HIERARCHIES: Hierarchical[] = ["stacked", "cutout"]
+const PATH_MODES: PathMode[] = ["spline", "polygon", "none"]
 
-export function methodLabel(method?: string | null) {
-    if (method === "no_bg_removal") return "Sem remover fundo"
-    return methodOptions.find((option) => option.value === method)?.label ?? method ?? ""
+export function methodOptions(t: Messages): Array<{ value: Method; label: string }> {
+    return METHODS.map((value) => ({ value, label: t.options.method[value] }))
 }
 
-export const colorModeOptions: Array<{ value: ColorMode; label: string }> = [
-    { value: "color", label: "Colorido" },
-    { value: "binary", label: "Preto e branco" },
-]
+export function methodLabel(t: Messages, method?: string | null) {
+    if (method === "no_bg_removal") return t.options.method.no_bg_removal
+    return METHODS.includes(method as Method) ? t.options.method[method as Method] : method ?? ""
+}
 
-export const hierarchicalOptions: Array<{ value: Hierarchical; label: string }> = [
-    { value: "stacked", label: "Empilhado" },
-    { value: "cutout", label: "Recortado" },
-]
+export function colorModeOptions(t: Messages): Array<{ value: ColorMode; label: string }> {
+    return COLOR_MODES.map((value) => ({ value, label: t.options.colorMode[value] }))
+}
 
-export const pathModeOptions: Array<{ value: PathMode; label: string }> = [
-    { value: "spline", label: "Curvas" },
-    { value: "polygon", label: "Polígonos" },
-    { value: "none", label: "Pixels" },
-]
+export function hierarchicalOptions(t: Messages): Array<{ value: Hierarchical; label: string }> {
+    return HIERARCHIES.map((value) => ({ value, label: t.options.hierarchical[value] }))
+}
+
+export function pathModeOptions(t: Messages): Array<{ value: PathMode; label: string }> {
+    return PATH_MODES.map((value) => ({ value, label: t.options.pathMode[value] }))
+}

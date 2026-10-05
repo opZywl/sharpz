@@ -4,7 +4,7 @@ import { Archive, Check, ChevronDown, Download, ImagePlus, type LucideIcon } fro
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import { formatBytes } from "@/lib/dashboard-utils"
+import { useI18n } from "@/lib/i18n/provider"
 import { cn } from "@/lib/utils"
 
 export const cardEnter = {
@@ -254,6 +254,7 @@ export function PreviewTile({
     downloadName: string
     transparent?: boolean
 }) {
+    const { t } = useI18n()
     return (
         <div className="preview-card">
             <div className="preview-head flex items-center justify-between gap-3 px-4 py-3">
@@ -264,7 +265,7 @@ export function PreviewTile({
                 <Button asChild size="sm" variant="outline">
                     <a href={downloadHref} download={downloadName}>
                         <Download className="size-3.5" />
-                        Baixar
+                        {t.common.download}
                     </a>
                 </Button>
             </div>
@@ -297,6 +298,7 @@ export function FileField({
     label: string
     helper: string
 }) {
+    const { t, fmt } = useI18n()
     return (
         <div className="dropzone-shell rounded-xl p-4">
             <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg px-4 py-8 text-center">
@@ -312,13 +314,13 @@ export function FileField({
                 <span>
                     <span className="block text-sm font-semibold">{file?.name ?? label}</span>
                     <span className="app-faint mt-1 block text-xs">
-                        {file ? formatBytes(file.size) : helper}
+                        {file ? fmt.bytes(file.size) : helper}
                     </span>
                 </span>
             </label>
             {file ? (
                 <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => onChange(null)}>
-                    Limpar arquivo
+                    {t.common.clearFile}
                 </Button>
             ) : null}
         </div>

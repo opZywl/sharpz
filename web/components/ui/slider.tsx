@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useI18n } from "@/lib/i18n/provider"
 import { cn } from "@/lib/utils"
 
 interface SliderProps {
@@ -24,13 +25,14 @@ export function Slider({
     className,
     disabled,
 }: SliderProps) {
+    const { fmt } = useI18n()
     return (
         <div className={cn("flex flex-col gap-2", className)}>
             {label && (
                 <div className="flex items-center justify-between">
                     <label className="text-xs font-medium text-foreground/80">{label}</label>
                     <span className="text-xs tabular-nums text-muted-foreground">
-                        {Number.isInteger(step) ? value : value.toFixed(2)}
+                        {fmt.number(value, Number.isInteger(step) ? 0 : 2)}
                     </span>
                 </div>
             )}

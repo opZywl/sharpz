@@ -108,6 +108,9 @@
     body {
         font-family: var(--font-space-grotesk), system-ui, sans-serif;
     }
+    html[data-lang-pending] body {
+        visibility: hidden;
+    }
 }
 
 .app-page {
@@ -405,6 +408,25 @@
 
 .theme-icon-button:hover {
     background: var(--app-hover);
+}
+
+.lang-switch {
+    border: 1px solid var(--app-border);
+    background: var(--app-card);
+}
+
+.lang-switch-option {
+    color: var(--app-muted);
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+.lang-switch-option:hover {
+    color: var(--app-text);
+}
+
+.lang-switch-option[data-active="true"] {
+    background: var(--app-accent);
+    color: var(--app-accent-text);
 }
 
 /* Win11-style slider (matches portfolio) */

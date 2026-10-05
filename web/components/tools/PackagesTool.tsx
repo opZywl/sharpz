@@ -9,11 +9,13 @@ import {
     Loader2,
     RefreshCw,
 } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { EmptyState, Metric, Panel, cardEnter } from "@/components/dashboard/primitives"
 import { Button } from "@/components/ui/button"
-import { responseError } from "@/lib/dashboard-utils"
+import { apiFetch, responseError } from "@/lib/dashboard-utils"
+import { errorText, withLang } from "@/lib/i18n"
+import { useI18n, useMessage } from "@/lib/i18n/provider"
 
 type PackageCategory = "essencial" | "transcricao" | "ktx" | "opcional"
 
@@ -36,18 +38,14 @@ interface JobOutcome {
     returncode: number
 }
 
-const categoryOrder: Array<{ key: PackageCategory; title: string }> = [
-    { key: "essencial", title: "Essenciais" },
-    { key: "transcricao", title: "Transcricao" },
-    { key: "ktx", title: "Texturas KTX" },
-    { key: "opcional", title: "Opcionais" },
-]
+const CATEGORY_ORDER: PackageCategory[] = ["essencial", "transcricao", "ktx", "opcional"]
 
 export function PackagesTool() {
+    const { lang, t, fmt, resolve, ready } = useI18n()
     const [packages, setPackages] = useState<PackageInfo[]>([])
     const [loaded, setLoaded] = useState(false)
     const [apiOffline, setApiOffline] = useState(false)
-    const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useMessage()
 
     const [installingId, setInstallingId] = useState<string | null>(null)
     const [busyAll, setBusyAll] = useState(false)
@@ -59,9 +57,9 @@ export function PackagesTool() {
 
     const jobRunning = installingId !== null
 
-    async function loadPackages() {
+    const loadPackages = useCallback(async () => {
         try {
-            const response = await fetch("/api/packages")
+            const response = await apiFetch("/api/packages")
             if (!response.ok) throw new Error(`HTTP ${response.status}`)
             const data = (await response.json()) as { packages: PackageInfo[] }
             setPackages(data.packages)
@@ -71,10 +69,15 @@ export function PackagesTool() {
         } finally {
             setLoaded(true)
         }
-    }
+    }, [])
 
     useEffect(() => {
+        if (!ready) return
         void loadPackages()
+    }, [loadPackages, lang, ready])
+
+    useEffect(() => {
+        cancelledRef.current = false
         return () => {
             cancelledRef.current = true
         }
@@ -87,23 +90,23 @@ export function PackagesTool() {
     }, [log])
 
     function runInstall(id: string): Promise<JobOutcome> {
-        return new Promise((resolve) => {
+        return new Promise((resolveOutcome) => {
             setInstallingId(id)
             setOutcome(null)
             void (async () => {
                 try {
-                    const response = await fetch(`/api/packages/${id}/install`, { method: "POST" })
+                    const response = await apiFetch(`/api/packages/${id}/install`, { method: "POST" })
                     if (!response.ok) throw await responseError(response)
                     const { job_id } = (await response.json()) as { job_id: string }
 
-                    const source = new EventSource(`/api/packages/jobs/${job_id}/stream`)
+                    const source = new EventSource(withLang(`/api/packages/jobs/${job_id}/stream`))
 
                     const finish = async (result: JobOutcome) => {
                         source.close()
                         await loadPackages()
                         setOutcome(result)
                         setInstallingId(null)
-                        resolve(result)
+                        resolveOutcome(result)
                     }
 
                     source.onmessage = (event) => {
@@ -129,9 +132,9 @@ export function PackagesTool() {
                         void finish({ status: "error", returncode: 1 })
                     }
                 } catch (err) {
-                    setError(err instanceof Error ? err.message : "Erro ao iniciar instalacao.")
+                    setError(errorText(err, (m) => m.packages.startFailed))
                     setInstallingId(null)
-                    resolve({ status: "error", returncode: 1 })
+                    resolveOutcome({ status: "error", returncode: 1 })
                 }
             })()
         })
@@ -165,8 +168,8 @@ export function PackagesTool() {
         return (
             <div className="space-y-4">
                 <motion.div {...cardEnter}>
-                    <Panel title="Baixar pacotes" subtitle="Instale o que o Sharpz precisa para funcionar." icon={HardDriveDownload}>
-                        <EmptyState text="API offline — rode o sharpz.cmd" />
+                    <Panel title={t.tools.packages.title} subtitle={t.packages.offlineSubtitle} icon={HardDriveDownload}>
+                        <EmptyState text={t.packages.offline} />
                     </Panel>
                 </motion.div>
             </div>
@@ -179,18 +182,18 @@ export function PackagesTool() {
                 <div className="app-alert rounded-xl px-4 py-3 text-sm">
                     <div className="flex gap-2">
                         <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                        <span className="whitespace-pre-wrap">{error}</span>
+                        <span className="whitespace-pre-wrap">{resolve(error)}</span>
                     </div>
                 </div>
             ) : null}
 
             <motion.div {...cardEnter}>
-                <Panel title="Baixar pacotes" subtitle="Instale o que o Sharpz precisa sem sair do painel." icon={HardDriveDownload}>
+                <Panel title={t.tools.packages.title} subtitle={t.packages.subtitle} icon={HardDriveDownload}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 md:grid-cols-3">
-                            <Metric label="Total" value={String(total)} />
-                            <Metric label="Instalados" value={String(installedCount)} />
-                            <Metric label="Faltando" value={String(missingCount)} />
+                            <Metric label={t.metrics.total} value={fmt.number(total)} />
+                            <Metric label={t.packages.installed} value={fmt.number(installedCount)} />
+                            <Metric label={t.packages.missing} value={fmt.number(missingCount)} />
                         </div>
                         <Button
                             onClick={installAllMissing}
@@ -199,18 +202,18 @@ export function PackagesTool() {
                             className="w-full"
                         >
                             {busyAll ? <Loader2 className="size-4 animate-spin" /> : <HardDriveDownload className="size-4" />}
-                            Instalar tudo que falta
+                            {t.packages.installAll}
                         </Button>
                     </div>
                 </Panel>
             </motion.div>
 
-            {categoryOrder.map(({ key, title }) => {
+            {CATEGORY_ORDER.map((key) => {
                 const group = packages.filter((item) => item.category === key)
                 if (group.length === 0) return null
                 return (
                     <motion.div key={key} {...cardEnter}>
-                        <Panel title={title}>
+                        <Panel title={t.packages.categories[key]}>
                             <div className="grid gap-2">
                                 {group.map((item) => {
                                     const isInstalling = installingId === item.id
@@ -220,7 +223,7 @@ export function PackagesTool() {
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <span className="text-sm font-bold">{item.name}</span>
                                                     <span className="status-pill px-2 py-1 text-xs font-semibold" data-tone={item.installed ? "good" : "bad"}>
-                                                        {item.installed ? "instalado" : "faltando"}
+                                                        {item.installed ? t.status.installed : t.status.missing}
                                                     </span>
                                                     {item.size_hint ? (
                                                         <span className="app-faint text-xs">{item.size_hint}</span>
@@ -253,7 +256,7 @@ export function PackagesTool() {
                                                         ) : (
                                                             <Download className="size-3.5" />
                                                         )}
-                                                        {item.installed ? "Reinstalar" : "Instalar"}
+                                                        {item.installed ? t.packages.reinstall : t.packages.install}
                                                     </Button>
                                                 ) : (
                                                     <span className="app-faint block max-w-[16rem] text-xs">{item.manual_hint}</span>
@@ -269,14 +272,14 @@ export function PackagesTool() {
             })}
 
             <motion.div {...cardEnter}>
-                <Panel title="Log de instalacao" subtitle="Saida ao vivo do processo de instalacao." icon={HardDriveDownload}>
+                <Panel title={t.packages.logTitle} subtitle={t.packages.logSubtitle} icon={HardDriveDownload}>
                     {installingId || log.length > 0 ? (
                         <div className="space-y-3">
                             <div className="flex flex-wrap items-center gap-2 text-sm">
                                 {installingId ? (
                                     <span className="flex items-center gap-2 font-semibold">
                                         <Loader2 className="size-4 animate-spin" />
-                                        Instalando {packages.find((item) => item.id === installingId)?.name ?? installingId}
+                                        {t.packages.installing(packages.find((item) => item.id === installingId)?.name ?? installingId)}
                                     </span>
                                 ) : outcome ? (
                                     <span className="flex items-center gap-2 font-semibold" data-tone={outcome.status === "done" ? "good" : "bad"}>
@@ -285,7 +288,7 @@ export function PackagesTool() {
                                         ) : (
                                             <AlertTriangle className="size-4" />
                                         )}
-                                        {outcome.status === "done" ? "Concluido" : `Erro (codigo ${outcome.returncode})`}
+                                        {outcome.status === "done" ? t.packages.done : t.packages.failed(outcome.returncode)}
                                     </span>
                                 ) : null}
                             </div>
@@ -294,7 +297,7 @@ export function PackagesTool() {
                             </pre>
                         </div>
                     ) : (
-                        <EmptyState text="Inicie uma instalacao para acompanhar a saida aqui." />
+                        <EmptyState text={t.packages.logEmpty} />
                     )}
                 </Panel>
             </motion.div>

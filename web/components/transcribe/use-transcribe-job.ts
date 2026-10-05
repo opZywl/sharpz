@@ -9,6 +9,7 @@ import {
     writeStorage,
     type FriendlyError,
 } from "@/components/transcribe/transcribe-utils"
+import { resolveMessage, type Message } from "@/lib/i18n"
 import {
     cancelJob,
     getJob,
@@ -65,7 +66,7 @@ export interface JobState {
     degraded: string[]
     complete: CompleteManifest | null
     error: FriendlyError | null
-    notice: string | null
+    notice: Message | null
     canceling: boolean
     eta: EtaAnchor | null
 }
@@ -78,9 +79,9 @@ type Action =
     | { type: "snapshot"; job: TranscribeJob; now: number }
     | { type: "event"; event: TranscribeEvent; now: number }
     | { type: "fail"; error: FriendlyError; now: number }
-    | { type: "canceled"; notice: string; now: number }
+    | { type: "canceled"; notice: Message; now: number }
     | { type: "canceling"; value: boolean }
-    | { type: "notice"; notice: string | null }
+    | { type: "notice"; notice: Message | null }
     | { type: "clear" }
 
 const JOB_KEY = "sharpz.transcribe.job.v1"
@@ -89,13 +90,13 @@ const MAX_POLL_FAILURES = 12
 const TERMINAL = new Set<string>(["done", "error", "canceled"])
 const PRE_TRANSCRIBE = new Set(["", "queued", "start", "download", "download_model", "load_model"])
 
-const JOB_FAILED = "A transcrição falhou."
-const START_FAILED = "Não consegui começar a transcrição."
-const JOB_GONE = "Essa transcrição não existe mais no servidor (ele pode ter reiniciado). Solte o arquivo de novo."
-const LOST_CONNECTION = "Perdi o contato com o servidor do Sharpz. Quando ele voltar, recarregue a página para retomar."
-const DEDUPED = "Esse arquivo já estava sendo transcrito com as mesmas opções. Mostrando o andamento dele."
-const CANCELED = "Transcrição cancelada."
-const UPLOAD_CANCELED = "Envio cancelado."
+const JOB_FAILED: Message = (t) => t.job.failed
+const START_FAILED: Message = (t) => t.job.startFailed
+const JOB_GONE: Message = (t) => t.job.gone
+const LOST_CONNECTION: Message = (t) => t.job.lost
+const DEDUPED: Message = (t) => t.job.deduped
+const CANCELED: Message = (t) => t.job.canceled
+const UPLOAD_CANCELED: Message = (t) => t.job.uploadCanceled
 
 const INITIAL: JobState = {
     phase: "idle",
@@ -349,7 +350,7 @@ function createController(dispatch: Dispatch<Action>) {
         poll = null
     }
 
-    const fail = (message: string) => {
+    const fail = (message: Message) => {
         dispatch({ type: "fail", error: { message, detail: null }, now: Date.now() })
     }
 
@@ -520,7 +521,8 @@ function createController(dispatch: Dispatch<Action>) {
             if (job) dispatch({ type: "snapshot", job, now: Date.now() })
         } catch (err) {
             if (token !== epoch || jobId !== id) return
-            dispatch({ type: "notice", notice: `Não consegui cancelar: ${friendlyError(err, "erro desconhecido.").message}` })
+            const reason = friendlyError(err, (t) => t.job.unknown).message
+            dispatch({ type: "notice", notice: (t) => t.job.cancelFailed(resolveMessage(reason, t)) })
         } finally {
             if (token === epoch) dispatch({ type: "canceling", value: false })
         }

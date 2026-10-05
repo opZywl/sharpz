@@ -20,14 +20,14 @@ import { TranscribeProgress } from "@/components/transcribe/transcribe-progress"
 import {
     FAST_MODEL,
     FORMAT_OPTIONS,
-    LANGUAGE_OPTIONS,
-    MEDIA_HINT,
+    LANGUAGE_CODES,
     MODEL_FALLBACK,
     QUALITY_MODEL,
     baseName,
     cleanLocalPath,
     formatClock,
     isMediaFile,
+    languageOptions,
     modelLabel,
     pathTail,
     readStorageJson,
@@ -42,7 +42,9 @@ import { TranscriptResult } from "@/components/transcribe/transcript-result"
 import { useTranscribeJob } from "@/components/transcribe/use-transcribe-job"
 import { Button } from "@/components/ui/button"
 import { Segmented } from "@/components/ui/segmented"
-import { appendFields, formatBytes } from "@/lib/dashboard-utils"
+import { appendFields } from "@/lib/dashboard-utils"
+import type { Message, Messages } from "@/lib/i18n"
+import { useI18n } from "@/lib/i18n/provider"
 import { getCapabilities, getModels, type TranscribeCapabilities, type TranscribeModels } from "@/lib/transcribe-api"
 import { cn } from "@/lib/utils"
 
@@ -61,16 +63,18 @@ interface TranscribeOptions {
 type SourceKind = "file" | "path" | "url"
 type Source = { kind: "file"; file: File } | { kind: "path"; path: string } | { kind: "url"; url: string }
 type Mode = "fast" | "quality" | "custom"
+type ActionKind = "run" | "runAgain" | "retry"
 
 interface FormMessage {
     tone: "error" | "info"
-    text: string
+    text: Message
+    busy?: boolean
 }
 
 const AUTO_MODEL = "auto"
 const KNOWN_MODELS = new Set([AUTO_MODEL, ...MODEL_FALLBACK.map((entry) => entry.key)])
-const BUSY_MESSAGE = "Já tem uma transcrição em andamento. O arquivo ficou pronto: clique em Transcrever quando ela terminar."
-const READY_MESSAGE = "A transcrição anterior terminou. O arquivo novo está pronto: clique em Transcrever."
+const BUSY_MESSAGE: FormMessage = { tone: "info", text: (t) => t.transcribe.busy, busy: true }
+const READY_MESSAGE: FormMessage = { tone: "info", text: (t) => t.transcribe.ready }
 
 const DEFAULT_OPTIONS: TranscribeOptions = {
     language: "pt",
@@ -98,7 +102,7 @@ function sanitizeOptions(raw: unknown): TranscribeOptions | null {
     const language = typeof value.language === "string" ? value.language : ""
     const model = typeof value.model === "string" ? value.model : ""
     return {
-        language: LANGUAGE_OPTIONS.some((option) => option.value === language) ? language : DEFAULT_OPTIONS.language,
+        language: LANGUAGE_CODES.some((code) => code === language) ? language : DEFAULT_OPTIONS.language,
         model: KNOWN_MODELS.has(model) ? model : DEFAULT_OPTIONS.model,
         diarize: pickBoolean(value.diarize, DEFAULT_OPTIONS.diarize),
         wordTimestamps: pickBoolean(value.wordTimestamps, DEFAULT_OPTIONS.wordTimestamps),
@@ -117,10 +121,10 @@ const optionsStore: Store<TranscribeOptions> = {
 
 const hfTokenStore = stringStore("cleanup-image.hf-token")
 
-function sourceName(source: Source) {
+function sourceName(source: Source, fallback: string) {
     if (source.kind === "file") return source.file.name
     if (source.kind === "path") return pathTail(source.path)
-    return "transcricao"
+    return fallback
 }
 
 function sourceKey(source: Source | null) {
@@ -129,11 +133,11 @@ function sourceKey(source: Source | null) {
     return source.kind === "path" ? `path:${source.path}` : `url:${source.url}`
 }
 
-function describeSource(source: Source | null): DropzoneSource | null {
+function describeSource(source: Source | null, t: Messages, formatBytes: (bytes: number) => string): DropzoneSource | null {
     if (!source) return null
     if (source.kind === "file") return { kind: "file", title: source.file.name, subtitle: formatBytes(source.file.size) }
-    if (source.kind === "path") return { kind: "path", title: pathTail(source.path), subtitle: `Caminho no computador: ${source.path}` }
-    return { kind: "url", title: source.url, subtitle: "Link da internet: o áudio é baixado antes de transcrever." }
+    if (source.kind === "path") return { kind: "path", title: pathTail(source.path), subtitle: t.transcribe.pathSource(source.path) }
+    return { kind: "url", title: source.url, subtitle: t.transcribe.urlSource }
 }
 
 function OptionGroup({ title, children }: { title: string; children: React.ReactNode }) {
@@ -146,17 +150,19 @@ function OptionGroup({ title, children }: { title: string; children: React.React
 }
 
 function CapabilityPill({ label, ok }: { label: string; ok: boolean }) {
+    const { t } = useI18n()
     return (
         <span className="status-card inline-flex items-center gap-2 rounded-xl px-3 py-2">
             <span className="app-faint text-xs font-semibold uppercase tracking-[0.16em]">{label}</span>
             <span className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]" data-tone={ok ? "good" : "bad"}>
-                {ok ? "ok" : "faltando"}
+                {ok ? t.status.ok : t.status.missing}
             </span>
         </span>
     )
 }
 
 export function TranscribeWorkspace() {
+    const { t, fmt, resolve } = useI18n()
     const job = useTranscribeJob()
     const { state, busy } = job
     const [options, setOptions] = usePersistentState(DEFAULT_OPTIONS, optionsStore)
@@ -217,30 +223,28 @@ export function TranscribeWorkspace() {
 
     const modelOptions = useMemo(
         () => [
-            { value: AUTO_MODEL, label: resolvedAuto ? `Automático (agora: ${resolvedAuto.label})` : "Automático (Rápido)" },
-            ...models.map((entry) => ({ value: entry.key, label: modelLabel(entry) })),
+            { value: AUTO_MODEL, label: resolvedAuto ? t.transcribe.autoModelNow(resolvedAuto.label) : t.transcribe.autoModel },
+            ...models.map((entry) => ({ value: entry.key, label: modelLabel(t, entry) })),
         ],
-        [models, resolvedAuto],
+        [models, resolvedAuto, t],
     )
 
     const modeHint = options.translate
-        ? "Traduzir para inglês usa sempre a Máxima qualidade."
+        ? t.transcribe.hintTranslate
         : mode === "quality"
-          ? "Usa o Large v3: o mais preciso, e o mais lento."
+          ? t.transcribe.hintQuality
           : mode === "custom"
-            ? `Usando o modelo escolhido em Mais opções: ${selectedModel?.label ?? options.model}.`
+            ? t.transcribe.hintCustom(selectedModel?.label ?? options.model)
             : !catalog
-              ? "Usa o modelo mais rápido que estiver baixado."
+              ? t.transcribe.hintFastUnknown
               : resolvedAuto?.key === FAST_MODEL
-                ? "Usa o Large v3 Turbo: bem mais rápido e quase igual em qualidade."
-                : `Por enquanto o Rápido usa o ${resolvedAuto?.label ?? "Large v3"}, porque o modelo rápido ainda não foi baixado.`
+                ? t.transcribe.hintFastTurbo
+                : t.transcribe.hintFastFallback(resolvedAuto?.label ?? "Large v3")
 
     const modelNotes = [
-        selectedModel && !selectedModel.downloaded && catalog
-            ? "Esse modelo ainda não foi baixado: a primeira transcrição demora mais, porque ele baixa antes."
-            : null,
-        effectiveModel.startsWith("distil") && options.language !== "en" ? "Esse modelo só entende inglês." : null,
-    ].filter(Boolean)
+        selectedModel && !selectedModel.downloaded && catalog ? t.transcribe.notDownloaded : null,
+        effectiveModel.startsWith("distil") && options.language !== "en" ? t.transcribe.englishOnly : null,
+    ].filter((note): note is string => Boolean(note))
 
     const cleanPath = cleanLocalPath(localPath)
     const trimmedUrl = url.trim()
@@ -276,15 +280,15 @@ export function TranscribeWorkspace() {
         return form
     }
 
-    function startWith(next: Source, note: string | null = null) {
+    function startWith(next: Source, note: Message | null = null) {
         if (busy) {
-            setMessage({ tone: "info", text: BUSY_MESSAGE })
+            setMessage(BUSY_MESSAGE)
             return
         }
         setMessage(note ? { tone: "info", text: note } : null)
         setStartedKey(sourceKey(next))
         void job.start(buildForm(next), {
-            sourceName: sourceName(next),
+            sourceName: sourceName(next, t.transcribe.defaultName),
             mode: complete.enabled ? "complete" : "standard",
             uploading: next.kind === "file",
         })
@@ -292,18 +296,18 @@ export function TranscribeWorkspace() {
 
     function acceptFile(picked: File, count = 1) {
         if (!isMediaFile(picked)) {
-            setMessage({ tone: "error", text: `“${picked.name}” não é áudio nem vídeo. Escolha um destes: ${MEDIA_HINT}.` })
+            setMessage({ tone: "error", text: (m) => m.transcribe.notMedia(picked.name, m.transcribe.mediaHint) })
             return
         }
         if (picked.size === 0) {
-            setMessage({ tone: "error", text: `“${picked.name}” está vazio.` })
+            setMessage({ tone: "error", text: (m) => m.transcribe.emptyFile(picked.name) })
             return
         }
         setFile(picked)
         setSourceKind("file")
-        const note = count > 1 ? "Solte um arquivo por vez: usei só o primeiro." : null
+        const note: Message | null = count > 1 ? (m) => m.transcribe.oneAtATime : null
         if (busy) {
-            setMessage({ tone: "info", text: BUSY_MESSAGE })
+            setMessage(BUSY_MESSAGE)
             return
         }
         if (options.autoStart) startWith({ kind: "file", file: picked }, note)
@@ -315,6 +319,7 @@ export function TranscribeWorkspace() {
     const recorder = useMicRecorder(
         (recorded) => acceptFile(recorded),
         (text) => setMessage({ tone: "error", text }),
+        t.transcribe.recordingPrefix,
     )
 
     useEffect(() => {
@@ -365,15 +370,12 @@ export function TranscribeWorkspace() {
 
     useEffect(() => {
         if (busy) return
-        setMessage((current) => (current?.text === BUSY_MESSAGE ? { tone: "info", text: READY_MESSAGE } : current))
+        setMessage((current) => (current?.busy ? READY_MESSAGE : current))
     }, [busy])
 
     function handleTranscribe() {
         if (!source) {
-            setMessage({
-                tone: "error",
-                text: "Solte ou escolha um áudio ou vídeo primeiro. Em Mais opções também dá para usar um caminho do computador, um link ou o microfone.",
-            })
+            setMessage({ tone: "error", text: (m) => m.transcribe.needSource })
             return
         }
         startWith(source)
@@ -389,10 +391,7 @@ export function TranscribeWorkspace() {
     function changeMode(next: Mode) {
         if (next === "custom") return
         if (options.translate && next === "fast") {
-            setMessage({
-                tone: "info",
-                text: "Traduzir para inglês usa sempre a Máxima qualidade. Desligue a tradução em Mais opções para usar o Rápido.",
-            })
+            setMessage({ tone: "info", text: (m) => m.transcribe.translateLocked })
             return
         }
         update({ model: next === "fast" ? AUTO_MODEL : QUALITY_MODEL })
@@ -410,30 +409,31 @@ export function TranscribeWorkspace() {
     }
 
     const activeExtras = [
-        options.diarize ? "Separar quem fala" : null,
-        options.wordTimestamps ? "Tempo por palavra" : null,
-        options.translate ? "Traduzir para inglês" : null,
-        options.vad ? null : "Sem filtro de silêncio",
-        complete.enabled ? "Modo Complete" : null,
-        options.autoStart ? null : "Começa só no botão",
-        mode === "custom" ? `Modelo ${selectedModel?.label ?? options.model}` : null,
-        source?.kind === "path" ? "Caminho do computador" : null,
-        source?.kind === "url" ? "Link da internet" : null,
+        options.diarize ? t.transcribe.extras.diarize : null,
+        options.wordTimestamps ? t.transcribe.extras.words : null,
+        options.translate ? t.transcribe.extras.translate : null,
+        options.vad ? null : t.transcribe.extras.noVad,
+        complete.enabled ? t.transcribe.extras.complete : null,
+        options.autoStart ? null : t.transcribe.extras.manual,
+        mode === "custom" ? t.transcribe.extras.model(selectedModel?.label ?? options.model) : null,
+        source?.kind === "path" ? t.transcribe.extras.path : null,
+        source?.kind === "url" ? t.transcribe.extras.url : null,
     ].filter((item): item is string => Boolean(item))
 
     const text = useMemo(() => state.text ?? segmentsToText(state.segments), [state.text, state.segments])
-    const fileBase = baseName(state.sourceName || "transcricao")
+    const fileBase = baseName(state.sourceName || t.transcribe.defaultName, t.transcribe.defaultName)
     const tookSeconds =
         state.startedAt && state.finishedAt ? (state.finishedAt - state.startedAt) / 1000 : state.elapsed
     const showResult = busy || state.phase === "done" || state.segments.length > 0
     const sameSource = Boolean(startedKey) && sourceKey(source) === startedKey && !busy
-    const actionLabel = !sameSource
-        ? "Transcrever"
+    const action: ActionKind = !sameSource
+        ? "run"
         : state.phase === "done"
-          ? "Transcrever de novo"
+          ? "runAgain"
           : state.phase === "error" || state.phase === "canceled"
-            ? "Tentar de novo"
-            : "Transcrever"
+            ? "retry"
+            : "run"
+    const actionLabel = action === "run" ? t.transcribe.run : action === "runAgain" ? t.transcribe.runAgain : t.transcribe.retry
     const showNotice = Boolean(state.notice) && (busy || state.phase === "canceled")
 
     return (
@@ -445,22 +445,18 @@ export function TranscribeWorkspace() {
                             <Upload className="size-7" />
                         </span>
                         <span className="font-jakarta text-xl font-extrabold">
-                            {options.autoStart ? "Solte para transcrever" : "Solte para escolher este arquivo"}
+                            {options.autoStart ? t.transcribe.dropToStart : t.transcribe.dropToPick}
                         </span>
                     </div>
                 </div>
             ) : null}
 
             <motion.div {...cardEnter}>
-                <Panel
-                    title="Transcrição"
-                    subtitle="Solte um áudio ou vídeo e receba o texto. Funciona com áudio do WhatsApp."
-                    icon={AudioLines}
-                >
+                <Panel title={t.tools.transcribe.title} subtitle={t.transcribe.subtitle} icon={AudioLines}>
                     <div className="grid gap-4">
                         <MediaDropzone
                             dragging={dragging}
-                            source={describeSource(source)}
+                            source={describeSource(source, t, fmt.bytes)}
                             autoStart={options.autoStart}
                             onPick={(picked) => acceptFile(picked)}
                             onClear={clearSource}
@@ -470,36 +466,36 @@ export function TranscribeWorkspace() {
                             <div className="status-card flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3">
                                 <span className="inline-flex items-center gap-2 text-sm font-semibold tabular-nums">
                                     <span className="size-2.5 animate-pulse rounded-full bg-red-500" />
-                                    Gravando do microfone · {formatClock(recorder.seconds)}
+                                    {t.transcribe.recording(formatClock(recorder.seconds))}
                                 </span>
                                 <Button type="button" variant="outline" size="sm" onClick={recorder.stop}>
                                     <Square className="size-3.5" />
-                                    Parar e usar a gravação
+                                    {t.transcribe.stopAndUse}
                                 </Button>
                             </div>
                         ) : null}
 
                         <div className="grid items-start gap-4 lg:grid-cols-[minmax(200px,260px)_minmax(0,1fr)]">
                             <SelectField
-                                label="Idioma"
+                                label={t.transcribe.language}
                                 value={options.language}
-                                options={LANGUAGE_OPTIONS}
+                                options={languageOptions(t)}
                                 onChange={(language) => update({ language })}
                             />
                             <div className="grid min-w-0 gap-2">
-                                <span className="field-label">Modo</span>
+                                <span className="field-label">{t.transcribe.mode}</span>
                                 <div className="flex flex-wrap items-center gap-3">
                                     <Segmented<Mode>
                                         value={mode}
                                         onChange={changeMode}
                                         options={[
-                                            { value: "fast", label: "Rápido" },
-                                            { value: "quality", label: "Máxima qualidade" },
+                                            { value: "fast", label: t.transcribe.fast },
+                                            { value: "quality", label: t.transcribe.quality },
                                         ]}
                                         className="h-11"
                                     />
                                     {turbo && !turbo.downloaded ? (
-                                        <ModelDownload model={turbo} label="Baixar modelo rápido (1,6 GB)" onDone={refreshModels} />
+                                        <ModelDownload model={turbo} label={t.transcribe.downloadFast} onDone={refreshModels} />
                                     ) : null}
                                 </div>
                                 <p className="app-faint text-xs leading-5">{modeHint}</p>
@@ -510,7 +506,7 @@ export function TranscribeWorkspace() {
                             <Button type="button" size="lg" onClick={handleTranscribe} disabled={busy}>
                                 {busy ? (
                                     <Loader2 className="size-4 animate-spin" />
-                                ) : actionLabel === "Transcrever" ? (
+                                ) : action === "run" ? (
                                     <Play className="size-4" />
                                 ) : (
                                     <RotateCcw className="size-4" />
@@ -518,7 +514,7 @@ export function TranscribeWorkspace() {
                                 {actionLabel}
                             </Button>
                             {!busy && !options.autoStart ? (
-                                <span className="app-faint text-xs">Começar sozinho está desligado em Mais opções.</span>
+                                <span className="app-faint text-xs">{t.transcribe.autoStartOff}</span>
                             ) : null}
                         </div>
 
@@ -530,7 +526,7 @@ export function TranscribeWorkspace() {
                                 )}
                                 role={message.tone === "error" ? "alert" : "status"}
                             >
-                                {message.text}
+                                {resolve(message.text)}
                             </div>
                         ) : null}
 
@@ -538,20 +534,20 @@ export function TranscribeWorkspace() {
                             <div className="app-alert rounded-xl px-4 py-3 text-sm" role="alert">
                                 <div className="flex gap-2">
                                     <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                                    <span className="whitespace-pre-wrap">{state.error.message}</span>
+                                    <span className="whitespace-pre-wrap">{resolve(state.error.message)}</span>
                                 </div>
                                 {state.error.detail ? (
                                     <details className="mt-2">
-                                        <summary className="cursor-pointer text-xs font-semibold">Ver detalhes técnicos</summary>
+                                        <summary className="cursor-pointer text-xs font-semibold">{t.transcribe.details}</summary>
                                         <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs">{state.error.detail}</pre>
                                     </details>
                                 ) : null}
                             </div>
                         ) : null}
 
-                        {showNotice ? (
+                        {showNotice && state.notice ? (
                             <div className="status-card rounded-xl px-4 py-3 text-sm" role="status">
-                                {state.notice}
+                                {resolve(state.notice)}
                             </div>
                         ) : null}
 
@@ -566,7 +562,7 @@ export function TranscribeWorkspace() {
                             >
                                 <span className="flex min-w-0 flex-wrap items-center gap-2">
                                     <Settings2 className="size-4 shrink-0" />
-                                    <span className="text-sm font-semibold">Mais opções</span>
+                                    <span className="text-sm font-semibold">{t.transcribe.more}</span>
                                     {activeExtras.map((item) => (
                                         <span
                                             key={item}
@@ -585,14 +581,14 @@ export function TranscribeWorkspace() {
                                     <CheckboxRow
                                         checked={options.autoStart}
                                         onChange={(autoStart) => update({ autoStart })}
-                                        label="Começar assim que soltar o arquivo"
-                                        helper="Vale para soltar, escolher, colar (Ctrl+V) ou parar a gravação do microfone."
+                                        label={t.transcribe.autoStart}
+                                        helper={t.transcribe.autoStartHelper}
                                     />
 
-                                    <OptionGroup title="Modelo e precisão">
+                                    <OptionGroup title={t.transcribe.groups.model}>
                                         <div className="grid gap-2 md:max-w-md">
                                             <SelectField
-                                                label="Modelo exato"
+                                                label={t.transcribe.exactModel}
                                                 value={effectiveModel}
                                                 options={modelOptions}
                                                 onChange={(model) => update({ model })}
@@ -607,51 +603,51 @@ export function TranscribeWorkspace() {
                                             <CheckboxRow
                                                 checked={options.wordTimestamps}
                                                 onChange={(wordTimestamps) => update({ wordTimestamps })}
-                                                label="Tempo por palavra"
-                                                helper="Guarda o tempo de cada palavra no JSON. Fica um pouco mais lento."
+                                                label={t.transcribe.words}
+                                                helper={t.transcribe.wordsHelper}
                                             />
                                             <CheckboxRow
                                                 checked={options.vad}
                                                 onChange={(vad) => update({ vad })}
-                                                label="Filtrar silêncio"
-                                                helper="Pula os trechos sem fala. Deixa mais rápido."
+                                                label={t.transcribe.vad}
+                                                helper={t.transcribe.vadHelper}
                                             />
                                             <CheckboxRow
                                                 checked={options.translate}
                                                 onChange={(translate) => update({ translate })}
-                                                label="Traduzir para inglês"
-                                                helper="O texto sai em inglês. Usa sempre a Máxima qualidade."
+                                                label={t.transcribe.translate}
+                                                helper={t.transcribe.translateHelper}
                                             />
                                         </div>
                                     </OptionGroup>
 
-                                    <OptionGroup title="Quem fala">
+                                    <OptionGroup title={t.transcribe.groups.speakers}>
                                         <CheckboxRow
                                             checked={options.diarize}
                                             onChange={(diarize) => update({ diarize })}
-                                            label="Separar quem fala (diarização)"
-                                            helper="Precisa de um token da Hugging Face e de aceitar os termos do pyannote no site dela. Fica bem mais lenta."
+                                            label={t.transcribe.diarize}
+                                            helper={t.transcribe.diarizeHelper}
                                         />
                                         {options.diarize ? (
                                             <div className="grid gap-3 md:grid-cols-2">
                                                 <TextField
-                                                    label="Mínimo de pessoas"
+                                                    label={t.transcribe.minSpeakers}
                                                     value={minSpeakers}
                                                     onChange={setMinSpeakers}
-                                                    placeholder="automático"
+                                                    placeholder={t.placeholders.automatic}
                                                     type="number"
                                                 />
                                                 <TextField
-                                                    label="Máximo de pessoas"
+                                                    label={t.transcribe.maxSpeakers}
                                                     value={maxSpeakers}
                                                     onChange={setMaxSpeakers}
-                                                    placeholder="automático"
+                                                    placeholder={t.placeholders.automatic}
                                                     type="number"
                                                 />
                                             </div>
                                         ) : null}
                                         <TextField
-                                            label="Token da Hugging Face (para separar quem fala)"
+                                            label={t.transcribe.hfToken}
                                             value={hfToken}
                                             onChange={setHfToken}
                                             placeholder="hf_..."
@@ -659,7 +655,7 @@ export function TranscribeWorkspace() {
                                         />
                                     </OptionGroup>
 
-                                    <OptionGroup title="Arquivos gerados">
+                                    <OptionGroup title={t.transcribe.groups.files}>
                                         <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
                                             {FORMAT_OPTIONS.map((format) => (
                                                 <CheckboxRow
@@ -669,57 +665,52 @@ export function TranscribeWorkspace() {
                                                         if (format.key !== "txt") update({ formats: { ...options.formats, [format.key]: checked } })
                                                     }}
                                                     label={format.label}
-                                                    helper={format.helper}
+                                                    helper={t.transcribe.formats[format.key]}
                                                 />
                                             ))}
                                         </div>
                                     </OptionGroup>
 
-                                    <OptionGroup title="Outras fontes">
+                                    <OptionGroup title={t.transcribe.groups.sources}>
                                         <div className="grid gap-3 md:grid-cols-2">
                                             <TextField
-                                                label="Caminho no computador"
+                                                label={t.transcribe.localPath}
                                                 value={localPath}
                                                 onChange={changePath}
-                                                placeholder="C:\caminho\para\video.mp4"
+                                                placeholder={t.placeholders.videoFile}
                                             />
                                             <TextField
-                                                label="Link do YouTube ou de outro site"
+                                                label={t.transcribe.url}
                                                 value={url}
                                                 onChange={changeUrl}
                                                 placeholder="https://www.youtube.com/watch?v=..."
                                             />
                                         </div>
-                                        <p className="app-faint text-xs leading-5">
-                                            O caminho lê o arquivo direto do disco, sem enviar: bom para vídeos grandes. Vale a última fonte que você
-                                            escolheu ou preencheu.
-                                        </p>
+                                        <p className="app-faint text-xs leading-5">{t.transcribe.sourcesHint}</p>
                                         <div className="flex flex-wrap items-center gap-3">
                                             {recorder.recording ? (
                                                 <Button type="button" variant="outline" onClick={recorder.stop}>
                                                     <Square className="size-4" />
-                                                    Parar ({formatClock(recorder.seconds)})
+                                                    {t.transcribe.stop(formatClock(recorder.seconds))}
                                                 </Button>
                                             ) : (
                                                 <Button type="button" variant="outline" onClick={recorder.start}>
                                                     <Mic className="size-4" />
-                                                    Gravar do microfone
+                                                    {t.transcribe.record}
                                                 </Button>
                                             )}
-                                            <span className="app-faint text-xs">
-                                                A gravação vira um arquivo e segue o mesmo caminho de um arquivo solto aqui.
-                                            </span>
+                                            <span className="app-faint text-xs">{t.transcribe.recordHint}</span>
                                         </div>
                                     </OptionGroup>
 
                                     <CompleteModeFields settings={complete} onChange={updateComplete} />
 
                                     {capabilities ? (
-                                        <OptionGroup title="O que está instalado">
+                                        <OptionGroup title={t.transcribe.groups.installed}>
                                             <div className="flex flex-wrap gap-2">
                                                 <CapabilityPill label="ffmpeg" ok={capabilities.ffmpeg} />
-                                                <CapabilityPill label="Tempo por palavra" ok={capabilities.whisperx} />
-                                                <CapabilityPill label="Diarização" ok={capabilities.diarization} />
+                                                <CapabilityPill label={t.transcribe.words} ok={capabilities.whisperx} />
+                                                <CapabilityPill label={t.transcribe.diarization} ok={capabilities.diarization} />
                                             </div>
                                         </OptionGroup>
                                     ) : null}

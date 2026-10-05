@@ -14,12 +14,15 @@ import {
 } from "@/components/dashboard/primitives"
 import { Button } from "@/components/ui/button"
 import { KtxPatchResult } from "@/lib/dashboard-types"
-import { appendFields, formatBytes, ktxData, postForm } from "@/lib/dashboard-utils"
+import { appendFields, ktxData, postForm } from "@/lib/dashboard-utils"
+import { errorText } from "@/lib/i18n"
+import { useI18n, useMessage } from "@/lib/i18n/provider"
 
 export function KtxOrientationTool() {
+    const { t, fmt, resolve } = useI18n()
     const [ktxFile, setKtxFile] = useState<File | null>(null)
     const [busy, setBusy] = useState(false)
-    const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useMessage()
     const [result, setResult] = useState<KtxPatchResult | null>(null)
 
     const [ktxPatch, setKtxPatch] = useState({
@@ -29,7 +32,7 @@ export function KtxOrientationTool() {
 
     async function runKtxPatch() {
         if (!ktxFile) {
-            setError("Carregue um arquivo .ktx/.ktx2 antes de corrigir a orientação.")
+            setError((m) => m.ktxOrientation.needFile)
             return
         }
         setBusy(true)
@@ -45,7 +48,7 @@ export function KtxOrientationTool() {
             setResult(data)
             if (!data.success) setError(data.summary)
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Erro inesperado ao corrigir o KTX.")
+            setError(errorText(err, (m) => m.ktxOrientation.unexpected))
         } finally {
             setBusy(false)
         }
@@ -56,37 +59,37 @@ export function KtxOrientationTool() {
             {error ? (
                 <div className="app-alert rounded-xl px-4 py-3 text-sm">
                     <div className="flex gap-2">
-                        <span className="whitespace-pre-wrap">{error}</span>
+                        <span className="whitespace-pre-wrap">{resolve(error)}</span>
                     </div>
                 </div>
             ) : null}
 
             <motion.div {...cardEnter} className="grid gap-4 xl:grid-cols-[minmax(290px,0.72fr)_minmax(0,1.28fr)]">
-                <Panel title="Arquivo KTX" subtitle="Aceita .ktx ou .ktx2 e devolve o arquivo corrigido." icon={Archive}>
-                    <FileField file={ktxFile} onChange={setKtxFile} accept=".ktx,.ktx2,application/octet-stream" label="Escolher KTX" helper="Textura .ktx ou .ktx2" />
+                <Panel title={t.ktxOrientation.fileTitle} subtitle={t.ktxOrientation.fileSubtitle} icon={Archive}>
+                    <FileField file={ktxFile} onChange={setKtxFile} accept=".ktx,.ktx2,application/octet-stream" label={t.ktxOrientation.choose} helper={t.ktxOrientation.chooseHelper} />
                 </Panel>
-                <Panel title="Corrigir orientação" subtitle="Garante a orientação correta da textura na cena 3D." icon={ShieldCheck}>
+                <Panel title={t.ktxOrientation.title} subtitle={t.ktxOrientation.subtitle} icon={ShieldCheck}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
-                            <TextField label="Nome do arquivo" value={ktxPatch.outputName} onChange={(outputName) => setKtxPatch((current) => ({ ...current, outputName }))} placeholder="texture.ktx" />
-                            <TextField label="Salvar tambem em" value={ktxPatch.outputPath} onChange={(outputPath) => setKtxPatch((current) => ({ ...current, outputPath }))} placeholder="C:/caminho/para/pasta" />
+                            <TextField label={t.fields.fileName} value={ktxPatch.outputName} onChange={(outputName) => setKtxPatch((current) => ({ ...current, outputName }))} placeholder={t.placeholders.textureFile} />
+                            <TextField label={t.fields.alsoSaveTo} value={ktxPatch.outputPath} onChange={(outputPath) => setKtxPatch((current) => ({ ...current, outputPath }))} placeholder={t.placeholders.folder} />
                         </div>
                         <Button onClick={runKtxPatch} disabled={busy} size="lg" className="w-full">
                             {busy ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
-                            Corrigir orientação
+                            {t.ktxOrientation.run}
                         </Button>
                     </div>
                 </Panel>
             </motion.div>
 
             <motion.div {...cardEnter}>
-                <Panel title="Resultado" subtitle="Previews e downloads ficam aqui sem trocar de página." icon={Activity}>
+                <Panel title={t.common.result} subtitle={t.common.resultSubtitle} icon={Activity}>
                     {result ? (
                         <div className="space-y-4">
                             <div className="grid gap-3 md:grid-cols-3">
-                                <Metric label="Status" value={result.success ? "OK" : "Falha"} />
-                                <Metric label="Entrada" value={formatBytes(result.size_input)} />
-                                <Metric label="Saida" value={formatBytes(result.size_output)} helper={result.saved_path ?? undefined} />
+                                <Metric label={t.metrics.status} value={result.success ? t.status.okTitle : t.status.failed} />
+                                <Metric label={t.metrics.input} value={fmt.bytes(result.size_input)} />
+                                <Metric label={t.metrics.output} value={fmt.bytes(result.size_output)} helper={result.saved_path ?? undefined} />
                             </div>
                             <pre className="app-codeblock max-h-64 overflow-auto rounded-xl p-4 text-sm leading-6">
                                 {result.summary}
@@ -95,13 +98,13 @@ export function KtxOrientationTool() {
                                 <Button asChild variant="outline">
                                     <a href={ktxData(result.ktx_b64)} download={result.filename}>
                                         <Download className="size-4" />
-                                        Baixar {result.filename}
+                                        {t.common.downloadName(result.filename)}
                                     </a>
                                 </Button>
                             ) : null}
                         </div>
                     ) : (
-                        <EmptyState text="Corrija a orientação para receber o KTX atualizado." />
+                        <EmptyState text={t.ktxOrientation.empty} />
                     )}
                 </Panel>
             </motion.div>
