@@ -3,10 +3,10 @@
 Examples:
     # Auto-detect (recommended) — picks luma keying for graphics on black/white,
     # AI segmentation for natural images
-    python cli.py graphics.png -o output/
+    python cli.py input.png -o output/
 
     # Force luma keying for neon/glow on dark background
-    python cli.py graphics.png -o output/ --method luma_dark
+    python cli.py input.png -o output/ --method luma_dark
 
     # Folder of images, AI mode with fast model
     python cli.py samples/ -o output/ --method ai --model u2net

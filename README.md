@@ -17,12 +17,6 @@ Private production tool by [opZywl](https://github.com/opZywl), styled after the
 
 </div>
 
-## Preview
-
-<p align="center">
-  <img src="cleanup-ui.png" alt="Sharpz dashboard - dark portfolio style image cleanup workspace" />
-</p>
-
 ## What Sharpz Does
 
 Sharpz is a local-first utility for preparing images and textures:
@@ -69,12 +63,52 @@ http://127.0.0.1:8000
 
 ## Transcricao de Video
 
-A aba **Transcricao** do dashboard converte audio de videos em texto usando
-faster-whisper (modelo `large-v3` por padrao), com alinhamento de palavras e
-diarizacao de falantes via whisperX quando disponivel. Os formatos de saida
-sao `txt`, `srt`, `vtt`, `json` e `lrc`.
+A aba **Transcrição** do dashboard transforma áudio e vídeo em texto: é só soltar o
+arquivo (ou informar um caminho local ou um link) e esperar. O texto completo aparece
+na tela no fim, e os arquivos saem em `txt`, `srt`, `vtt`, `json` e `lrc`.
 
-O motor roda em um venv isolado (`whisper-venv`, Python 3.12) e e exposto pelo
+### Modelo `auto` (padrão)
+
+Sem escolher nada, o modelo é `auto`:
+
+- usa o **Large v3 Turbo** quando ele já está baixado (quase a mesma qualidade do
+  Large v3 em português e várias vezes mais rápido no CPU);
+- usa o **Large v3** enquanto o Turbo não foi baixado;
+- com **traduzir para inglês** ligado, usa sempre o Large v3 (o Turbo não traduz bem).
+
+O Turbo (~1,6 GB) pode ser baixado pelo botão de baixar modelo na aba Transcrição.
+O download roda em segundo plano, com prioridade baixa, e o painel mostra o
+progresso (`POST` e `GET` em `/api/transcribe/models/large-v3-turbo/download`).
+Pela linha de comando:
+
+```powershell
+.\whisper-venv\Scripts\python.exe tools\download_model.py turbo
+```
+
+### Motor quente
+
+O primeiro envio abre o motor de transcrição em segundo plano (`transcribe.worker`,
+dentro do `whisper-venv`) e carrega o modelo uma vez só. Os envios seguintes
+reaproveitam o modelo já carregado, então áudios curtos (como os do WhatsApp) ficam
+prontos em segundos. Depois de 5 minutos sem trabalho o motor desliga sozinho e
+devolve a RAM; o próximo envio abre outro.
+
+- `SHARPZ_WORKER_IDLE_S` muda esse tempo (em segundos).
+- `SHARPZ_WORKER=0` desliga o motor quente (cada envio abre um processo novo, como antes).
+- O motor roda com prioridade abaixo do normal, para o PC continuar usável, e o log
+  fica em `output/transcripts/_worker.log`.
+
+Outros detalhes:
+
+- Mandar o mesmo arquivo de novo enquanto ele está na fila ou rodando não cria outro
+  trabalho: o painel volta para o que já existe.
+- Dá para cancelar um trabalho na fila ou em andamento.
+- **Tempo por palavra** usa o recurso nativo do faster-whisper, que é leve. Só a
+  **separação de locutores** usa whisperX + pyannote, bem mais pesados, e precisa de
+  um token do Hugging Face (`HF_TOKEN`) com os termos do pyannote aceitos.
+- Links (YouTube e afins) são baixados com yt-dlp no formato original, sem reconversão.
+
+O motor roda em um venv isolado (`whisper-venv`, Python 3.12) e é exposto pelo
 backend em `/api/transcribe/*`. O frontend consome via proxy relativo `/api`.
 
 Forma mais simples de subir tudo (Windows): rode o launcher na raiz do repo.
@@ -93,7 +127,8 @@ O `transcribe.cmd` faz tudo de ponta a ponta, sem fricao:
 4. Sobe o frontend (`npm run dev`) na porta 5174 e aguarda responder.
 5. Valida 200 nos dois servicos e abre o dashboard no Chrome.
 
-Na primeira transcricao o modelo `large-v3` e baixado automaticamente.
+Se o modelo escolhido ainda não estiver no cache, ele é baixado automaticamente na
+primeira transcrição.
 
 As dependencias do motor estao em `requirements-transcribe.txt` para
 reprodutibilidade.
@@ -135,7 +170,7 @@ reprodutibilidade.
 Full pipeline for one image:
 
 ```powershell
-python cli.py graphics.png -o output/
+python cli.py input.png -o output/
 ```
 
 Batch background cleanup:

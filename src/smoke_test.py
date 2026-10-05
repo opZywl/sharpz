@@ -1,4 +1,4 @@
-"""End-to-end test: luma keying on the neon graphics.png."""
+"""End-to-end test: luma keying on an input image (pass a path, or drop sample.png)."""
 
 import sys
 import time
@@ -15,11 +15,12 @@ from src.processor import (
 
 def main() -> None:
     project_root = Path(__file__).parent.parent
-    src_image = project_root / "graphics.png"
+    src_image = Path(sys.argv[1]) if len(sys.argv) > 1 else project_root / "sample.png"
     out_dir = project_root / "output"
 
     if not src_image.exists():
         print(f"Missing test image: {src_image}")
+        print("Pass an image path: python src/smoke_test.py <image.png>")
         sys.exit(1)
 
     print(f"Processing: {src_image}")
@@ -50,7 +51,7 @@ def main() -> None:
         bg_options=bg_opts,
         vec_options=vec_opts,
         make_svg=True,
-        base_name="graphics",
+        base_name=src_image.stem,
     )
 
     dt = time.perf_counter() - t0
