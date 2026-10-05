@@ -1,13 +1,13 @@
 {
-  "name": "cleanup-image-web",
+  "name": "sharpz-web",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "next dev -p 5174",
     "build": "next build",
-    "start": "next start -p 5174",
-    "lint": "next lint"
+    "start": "next start -p 5174"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
