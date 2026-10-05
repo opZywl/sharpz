@@ -104,7 +104,7 @@ if not exist "%BPY%" (
   )
   echo %C_CYAN%  Instalando dependencias do backend ^(requirements.txt^)...%C_RESET%
   "%BPY%" -m pip install --upgrade pip
-  "%BPY%" -m pip install -r "%ROOT%\requirements.txt"
+  "%BPY%" -m pip install -r "%ROOT%\requirements.txt" -c "%ROOT%\constraints.txt"
   if errorlevel 1 (
     echo %C_RED%  [x] Falha ao instalar requirements.txt do backend.%C_RESET%
     goto :fail
