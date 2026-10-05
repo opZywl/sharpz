@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     devIndicators: false,
     experimental: {
         proxyTimeout: 30 * 60 * 1000,
+        middlewareClientMaxBodySize: "1gb",
     },
     async rewrites() {
         return [
