@@ -71,7 +71,7 @@ Há dois ambientes Python: `venv` (servidor do painel, Python 3.13) e `whisper-v
 | `/api/editor/render-html` | POST | Gera o PDF a partir da página do Editor. |
 | `/api/editor/render-png` | POST | Gera um PNG a partir da página do Editor. |
 
-Erros voltam em JSON com o campo `detail` (texto pronto para mostrar ao usuário). Falta de memória volta com status 503 e `code: "memoria_insuficiente"`.
+Erros voltam em JSON com o campo `detail` (texto pronto para mostrar ao usuário). Falta de memória volta com status 503 e `code: "memoria_insuficiente"`. Requisições com `Host` ou `Origin` de fora deste computador recebem 403.
 
 ## Testes
 

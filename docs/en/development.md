@@ -71,7 +71,7 @@ There are two Python environments: `venv` (dashboard server, Python 3.13) and `w
 | `/api/editor/render-html` | POST | Generates the PDF from the editor page. |
 | `/api/editor/render-png` | POST | Generates a PNG from the editor page. |
 
-Errors come back as JSON with a `detail` field (text ready to show to the user). Out-of-memory errors come back with status 503 and `code: "memoria_insuficiente"`.
+Errors come back as JSON with a `detail` field (text ready to show to the user). Out-of-memory errors come back with status 503 and `code: "memoria_insuficiente"`. Requests whose `Host` or `Origin` is not this computer get a 403.
 
 ## Tests
 

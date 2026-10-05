@@ -18,3 +18,5 @@ Inclua o que acontece, como reproduzir e qual o impacto. O relato é analisado o
 ## Escopo
 
 O Sharpz foi feito para rodar no próprio computador: o servidor escuta em `127.0.0.1:8000` e o painel em `localhost:5174`. Expor esses serviços na internet ou em uma rede compartilhada não é um uso suportado.
+
+O servidor só aceita requisições deste computador: quando o `Host` ou a `Origin` não é `localhost`, `127.0.0.1` ou `::1`, a resposta é 403. Assim, outros sites abertos no navegador não conseguem chamar a API.

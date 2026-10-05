@@ -18,3 +18,5 @@ Include what happens, how to reproduce it and what the impact is. Reports are re
 ## Scope
 
 Sharpz is made to run on your own computer: the server listens on `127.0.0.1:8000` and the dashboard on `localhost:5174`. Exposing these services to the internet or to a shared network is not a supported use.
+
+The server only accepts requests from this computer: requests whose `Host` or `Origin` is not `localhost`, `127.0.0.1` or `::1` get a 403, so other websites open in the browser cannot call the API.
