@@ -4,9 +4,9 @@
 
 # Sharpz
 
-**Seu estúdio local para imagens, vetores, texturas 3D, transcrições e PDFs.**
+**IA no seu PC, sem nuvem e sem marca d'água.**
 
-Um painel só, rodando no seu próprio computador.
+Tire o fundo de imagens, transforme em vetor, gere texturas 3D, transcreva vídeos e monte PDFs editáveis num painel só.
 
 </div>
 
