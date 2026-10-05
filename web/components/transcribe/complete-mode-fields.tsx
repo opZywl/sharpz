@@ -156,7 +156,7 @@ export function CompleteModeFields({
                             label="Pasta de saída (opcional)"
                             value={settings.outputDir}
                             onChange={(outputDir) => onChange({ outputDir })}
-                            placeholder="C:\Users\zywl\WebstormProjects\sharpz"
+                            placeholder="C:\caminho\para\pasta"
                         />
                     </div>
                     <div className="grid gap-2 md:grid-cols-2">

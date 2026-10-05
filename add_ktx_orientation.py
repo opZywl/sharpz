@@ -81,12 +81,10 @@ def patch_orientation(src: Path, dst: Path | None = None) -> None:
 
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        targets = [Path(p) for p in sys.argv[1:]]
-    else:
-        # Default: patcha todos os KTX customizados
-        base = Path(r'C:\Users\zywl\WebstormProjects\portfolio\yzy\static\projects\images')
-        targets = sorted(base.glob('liquid-launcher-*.ktx')) + sorted(base.glob('fdp-client-*.ktx'))
+    if len(sys.argv) < 2:
+        print('Uso: python add_ktx_orientation.py <arquivo.ktx> [outros.ktx ...]')
+        sys.exit(1)
+    targets = [Path(p) for p in sys.argv[1:]]
 
     for t in targets:
         patch_orientation(t)

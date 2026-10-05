@@ -681,7 +681,7 @@ export function TranscribeWorkspace() {
                                                 label="Caminho no computador"
                                                 value={localPath}
                                                 onChange={changePath}
-                                                placeholder="C:\Users\zywl\Downloads\video.mp4"
+                                                placeholder="C:\caminho\para\video.mp4"
                                             />
                                             <TextField
                                                 label="Link do YouTube ou de outro site"

@@ -1044,17 +1044,17 @@ def build_app() -> gr.Blocks:
                 with gr.Tab("Batch (pasta)"):
                     gr.Markdown(
                         "Converte **pasta inteira** PNG/JPG → .ktx em paralelo. "
-                        "Caminhos absolutos (ex: `C:/Users/zywl/.../yzy/static/projects/images`)."
+                        "Caminhos absolutos (ex: `C:/caminho/para/imagens`)."
                     )
                     with gr.Row():
                         with gr.Column(scale=1):
                             ktx_batch_input = gr.Textbox(
                                 label="Pasta de input",
-                                placeholder="C:/Users/zywl/WebstormProjects/portfolio/yzy/static/projects/images",
+                                placeholder="C:/caminho/para/imagens",
                             )
                             ktx_batch_output = gr.Textbox(
                                 label="Pasta de output",
-                                placeholder="C:/Users/zywl/.../output_ktx",
+                                placeholder="C:/caminho/para/output_ktx",
                             )
                             ktx_batch_preset = gr.Dropdown(
                                 choices=ktx_preset_choices,

@@ -76,9 +76,11 @@ temp/
 *.p12
 *.pfx
 
+# Ferramentas de IA e anotações locais
 .claude/
 CLAUDE.md
 
+# Testes locais
 tests/_*.py
 
 # Sistema operacional e editores

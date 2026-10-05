@@ -83,8 +83,8 @@ export function PortfolioKtxTool() {
                 <Panel title="Portfolio KTX" subtitle="Tela fixa 960x540, ETC1S q255 e orientação corrigida." icon={PackageCheck}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
-                            <TextField label="Nome output" value={portfolioKtx.outputName} onChange={(outputName) => setPortfolioKtx((current) => ({ ...current, outputName }))} placeholder="liquid-launcher-1.ktx" />
-                            <TextField label="Salvar tambem em" value={portfolioKtx.outputPath} onChange={(outputPath) => setPortfolioKtx((current) => ({ ...current, outputPath }))} placeholder="C:/Users/zywl/WebstormProjects/portfolio/yzy/static/projects/images" />
+                            <TextField label="Nome output" value={portfolioKtx.outputName} onChange={(outputName) => setPortfolioKtx((current) => ({ ...current, outputName }))} placeholder="textura.ktx" />
+                            <TextField label="Salvar tambem em" value={portfolioKtx.outputPath} onChange={(outputPath) => setPortfolioKtx((current) => ({ ...current, outputPath }))} placeholder="C:/caminho/para/pasta" />
                         </div>
                         {capabilities?.alktx2_found === false ? (
                             <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
