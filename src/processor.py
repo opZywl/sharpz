@@ -242,17 +242,21 @@ def release_sessions() -> None:
 
 def _release_if_idle() -> None:
     with _session_lock:
-        if not _session_cache or time.monotonic() - _last_used < SESSION_IDLE_SECONDS:
+        if not _session_cache:
+            return
+        remaining = SESSION_IDLE_SECONDS - (time.monotonic() - _last_used)
+        if remaining > 0:
+            _schedule_idle_release(remaining)
             return
         _session_cache.clear()
     gc.collect()
 
 
-def _schedule_idle_release() -> None:
+def _schedule_idle_release(delay: float | None = None) -> None:
     global _idle_timer
     if _idle_timer is not None:
         _idle_timer.cancel()
-    _idle_timer = threading.Timer(SESSION_IDLE_SECONDS, _release_if_idle)
+    _idle_timer = threading.Timer(SESSION_IDLE_SECONDS if delay is None else delay, _release_if_idle)
     _idle_timer.daemon = True
     _idle_timer.start()
 

@@ -58,9 +58,17 @@ class PatchedProcessorCase(unittest.TestCase):
         processor._session_cache.clear()
 
     def tearDown(self):
+        if processor._idle_timer is not None:
+            processor._idle_timer.cancel()
         for name, value in self.originals.items():
             setattr(processor, name, value)
         processor._session_cache.clear()
+
+    def wait_until_released(self, timeout=10.0):
+        deadline = time.monotonic() + timeout
+        while processor._session_cache and time.monotonic() < deadline:
+            time.sleep(0.05)
+        return not processor._session_cache
 
     def post_image(self, route, **fields):
         return self.client.post(route, files={"file": ("imagem.png", png_bytes(), "image/png")}, data=fields)
@@ -268,8 +276,15 @@ class SessionTests(PatchedProcessorCase):
         processor.SESSION_IDLE_SECONDS = 0.2
         processor._last_used = time.monotonic()
         processor._schedule_idle_release()
-        time.sleep(0.8)
-        self.assertFalse(processor._session_cache)
+        self.assertTrue(self.wait_until_released())
+
+    def test_early_timer_reschedules_instead_of_keeping_the_session(self):
+        processor._session_cache["modelo"] = DummySession()
+        processor.SESSION_IDLE_SECONDS = 0.3
+        processor._last_used = time.monotonic()
+        processor._release_if_idle()
+        self.assertIn("modelo", processor._session_cache)
+        self.assertTrue(self.wait_until_released())
 
     def test_recent_session_is_kept(self):
         processor._session_cache["modelo"] = DummySession()
