@@ -15,7 +15,7 @@ colorama==0.4.6
 cssselect2==0.9.0
 defusedxml==0.7.1
 fastapi==0.136.1
-filelock==3.29.0
+filelock==4.0.9
 flatbuffers==25.12.19
 fsspec==2026.3.0
 gradio==6.13.0
