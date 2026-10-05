@@ -22,22 +22,22 @@ env:
 jobs:
   lint:
     name: Lint (Python)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Instalar o ruff
+      - name: Install ruff
         run: python -m pip install ruff==0.16.10
-      - name: Erros de sintaxe e nomes indefinidos
+      - name: Syntax errors and undefined names
         run: ruff check --output-format=github .
-      - name: Compilar todo o Python
+      - name: Compile all Python files
         run: python -m compileall -q -x "(venv|whisper-venv|node_modules|\.next)" .
 
   backend:
-    name: Backend (testes no Windows)
+    name: Backend tests (Windows)
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -49,18 +49,18 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             constraints.txt
-      - name: Instalar dependências
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -c constraints.txt
-      - name: Testes
+      - name: Unit tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
-      - name: Smoke do Imagem para PDF
+      - name: Image to PDF smoke test
         run: python -m imgpdf.smoke_test
 
   frontend:
-    name: Painel (tipos e build)
-    runs-on: ubuntu-latest
+    name: Dashboard (types and build)
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
@@ -72,15 +72,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Instalar dependências
+      - name: Install dependencies
         run: npm ci
-      - name: Checagem de tipos
+      - name: Type check
         run: npx tsc --noEmit -p .
-      - name: Build de produção
+      - name: Production build
         run: npm run build
 
   e2e:
-    name: Ponta a ponta (launcher, servidor e painel)
+    name: End-to-end (launcher, server and dashboard)
     runs-on: windows-latest
     needs: [backend, frontend]
     timeout-minutes: 40
@@ -98,52 +98,58 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Criar o ambiente como o instalador
+      - name: Create the environment like the installer does
         run: |
           python -m venv venv
           venv\Scripts\python.exe -m pip install --upgrade pip
           venv\Scripts\python.exe -m pip install -r requirements.txt -c constraints.txt
-      - name: Cache do modelo de remoção de fundo
+      - name: Cache the background removal model
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.u2net
           key: u2net-isnet-general-use-v1
-      - name: Baixar o modelo padrão (ISNet)
+      - name: Download the default model (ISNet)
         run: venv\Scripts\python.exe -c "from rembg import new_session; new_session('isnet-general-use')"
-      - name: Build do painel
+      - name: Build the dashboard
         working-directory: web
         run: |
           npm ci
           npm run build
-      - name: Subir o servidor e o painel
+      - name: Run the server and dashboard, then test through the launcher and the API proxy
         run: |
-          Start-Process -FilePath "venv\Scripts\python.exe" -ArgumentList "server.py" -NoNewWindow -RedirectStandardOutput server.log -RedirectStandardError server.err.log
-          Start-Process -FilePath "npm.cmd" -ArgumentList "run", "start" -WorkingDirectory web -NoNewWindow -RedirectStandardOutput web.log -RedirectStandardError web.err.log
-          foreach ($url in "http://127.0.0.1:8000/api/health", "http://localhost:5174") {
-            $ok = $false
-            for ($i = 0; $i -lt 90; $i++) {
-              try {
-                if ((Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10).StatusCode -eq 200) { $ok = $true; break }
-              } catch {}
-              Start-Sleep -Seconds 2
+          $server = Start-Process -FilePath "venv\Scripts\python.exe" -ArgumentList "server.py" -NoNewWindow -PassThru -RedirectStandardOutput server.log -RedirectStandardError server.err.log
+          $web = Start-Process -FilePath "npm.cmd" -ArgumentList "run", "start" -WorkingDirectory web -NoNewWindow -PassThru -RedirectStandardOutput web.log -RedirectStandardError web.err.log
+          try {
+            foreach ($url in "http://127.0.0.1:8000/api/health", "http://localhost:5174") {
+              $ok = $false
+              for ($i = 0; $i -lt 90; $i++) {
+                try {
+                  if ((Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10).StatusCode -eq 200) { $ok = $true; break }
+                } catch {}
+                Start-Sleep -Seconds 2
+              }
+              if (-not $ok) { throw "$url did not respond" }
+              Write-Host "$url is up"
             }
-            if (-not $ok) { throw "$url não respondeu" }
-            Write-Host "$url respondendo"
+
+            cmd /c "sharpz.cmd test < nul"
+            if ($LASTEXITCODE -ne 0) { throw "smoke test through sharpz.cmd failed with exit code $LASTEXITCODE" }
+
+            $page = Invoke-WebRequest -Uri "http://localhost:5174" -UseBasicParsing
+            if ($page.StatusCode -ne 200 -or $page.Content -notmatch "Sharpz") { throw "the dashboard did not load" }
+            $models = Invoke-RestMethod -Uri "http://localhost:5174/api/models"
+            $default = $models.models | Where-Object { $_.is_default }
+            if ($default.key -ne "isnet-general-use") { throw "unexpected default model: $($default.key)" }
+            $code = curl.exe -s -o error.json -w "%{http_code}" -F "file=@README.md;type=image/png" "http://localhost:5174/api/clean"
+            $detail = (Get-Content error.json -Raw -Encoding utf8 | ConvertFrom-Json).detail
+            if ($code -ne "400" -or $detail -notmatch "Imagem inv") { throw "the friendly error did not come through the proxy: $code $detail" }
+            Write-Host "dashboard ok, default model $($default.key), friendly error: $detail"
+          } finally {
+            foreach ($proc in $server, $web) {
+              if ($proc -and -not $proc.HasExited) { taskkill /T /F /PID $proc.Id | Out-Null }
+            }
+            $global:LASTEXITCODE = 0
           }
-      - name: Smoke test pelo launcher (sharpz.cmd testar)
-        shell: cmd
-        run: call sharpz.cmd testar < nul
-      - name: Painel e proxy da API
-        run: |
-          $page = Invoke-WebRequest -Uri "http://localhost:5174" -UseBasicParsing
-          if ($page.StatusCode -ne 200 -or $page.Content -notmatch "Sharpz") { throw "painel não carregou" }
-          $models = Invoke-RestMethod -Uri "http://localhost:5174/api/models"
-          $default = $models.models | Where-Object { $_.is_default }
-          if ($default.key -ne "isnet-general-use") { throw "modelo padrão inesperado: $($default.key)" }
-          $code = curl.exe -s -o erro.json -w "%{http_code}" -F "file=@README.md;type=image/png" "http://localhost:5174/api/clean"
-          $detail = (Get-Content erro.json -Raw -Encoding utf8 | ConvertFrom-Json).detail
-          if ($code -ne "400" -or $detail -notmatch "Imagem inv") { throw "erro amigável não chegou pelo proxy: $code $detail" }
-          Write-Host "painel ok, padrão $($default.key), erro amigável: $detail"
       - name: Logs
         if: always()
         run: |

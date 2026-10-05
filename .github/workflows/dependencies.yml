@@ -1,0 +1,64 @@
+name: Latest dependencies
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.13"
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  python:
+    name: Backend tests with the latest versions (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install the latest compatible versions
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Unit tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Image to PDF smoke test
+        run: python -m imgpdf.smoke_test
+      - name: Compare with constraints.txt
+        if: always()
+        shell: python
+        run: |
+          import os
+          import re
+          import subprocess
+          import sys
+
+          def parse(lines):
+              pins = {}
+              for line in lines:
+                  match = re.match(r"^([A-Za-z0-9._-]+)==([^\s;#]+)", line.strip())
+                  if match:
+                      pins[re.sub(r"[-_.]+", "-", match.group(1)).lower()] = match.group(2)
+              return pins
+
+          with open("constraints.txt", encoding="utf-8") as handle:
+              pinned = parse(handle)
+          frozen = subprocess.run([sys.executable, "-m", "pip", "freeze"], capture_output=True, text=True).stdout
+          latest = parse(frozen.splitlines())
+          changed = sorted(name for name in pinned if name in latest and latest[name] != pinned[name])
+          lines = ["## Versions that differ from constraints.txt", ""]
+          if changed:
+              lines += ["| Package | constraints.txt | Latest |", "| --- | --- | --- |"]
+              lines += [f"| {name} | {pinned[name]} | {latest[name]} |" for name in changed]
+          else:
+              lines.append("constraints.txt is up to date.")
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+              handle.write(summary)
