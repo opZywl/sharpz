@@ -824,6 +824,7 @@ class JobStore:
             "--newline",
             "--no-playlist",
             "-o", str(out_dir / "source.%(ext)s"),
+            "--",
             url,
         ]
         try:
