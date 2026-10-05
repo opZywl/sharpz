@@ -1,14 +1,14 @@
-rembg[cpu]>=2.0.59
+rembg[cpu]>=2.0.85
 vtracer>=0.6.11
-gradio>=4.44.0
-Pillow>=10.4.0
-numpy>=1.26.0
-onnxruntime>=1.20.0
-click>=8.1.7
-resvg-py>=0.3.0
+gradio>=6.29.1
+Pillow>=12.3.0
+numpy>=2.5.3
+onnxruntime>=1.30.0
+click>=8.5.0
+resvg-py>=0.5.0
 # KTX2 module reutiliza Pillow/numpy. scikit-image (opcional) pra
 # validacao PSNR/SSIM do output comprimido vs input original.
 scikit-image>=0.22.0
-alktx2>=0.1.6
+alktx2>=0.1.7
 # Modo Imagem -> PDF editavel: gera o PDF (imagem + camada de texto invisivel).
-PyMuPDF>=1.24.0
+PyMuPDF>=1.28.2

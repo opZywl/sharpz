@@ -5,12 +5,12 @@
 # IMPORTANTE: torch/torchaudio vem do indice CPU oficial do PyTorch:
 #   --index-url https://download.pytorch.org/whl/cpu
 # Exemplo manual:
-#   uv pip install -p whisper-venv\Scripts\python.exe torch==2.8.0 torchaudio==2.8.0 \
+#   uv pip install -p whisper-venv\Scripts\python.exe torch==2.14.1 torchaudio==2.11.0 \
 #       --index-url https://download.pytorch.org/whl/cpu
 
 faster-whisper
 ctranslate2
-torch==2.8.0
+torch==2.14.1
 torchaudio==2.8.0
 whisperx
 pyannote.audio
