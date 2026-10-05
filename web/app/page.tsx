@@ -23,8 +23,49 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { MODULES, ModuleId, TOOLS, ToolId, findToolModule } from "@/lib/modules"
 import { cn } from "@/lib/utils"
 
-function Dashboard() {
+function StatusPanel() {
     const { apiStatus, toktxFound, capabilities } = useDashboard()
+
+    return (
+        <DashboardShell innerClassName="p-4">
+            <div className="grid gap-2">
+                <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
+                    <span className="app-faint flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em]">
+                        <Server className="size-3.5" />
+                        API
+                    </span>
+                    <span
+                        className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]"
+                        data-tone={apiStatus === "online" ? "good" : apiStatus === "offline" ? "bad" : undefined}
+                    >
+                        {apiStatus}
+                    </span>
+                </div>
+                <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
+                    <span className="app-faint flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em]">
+                        <Cpu className="size-3.5" />
+                        toktx
+                    </span>
+                    <span className="text-xs font-semibold">
+                        {toktxFound === null ? "checking" : toktxFound ? "ok" : "missing"}
+                    </span>
+                </div>
+                <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
+                    <span className="app-faint flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em]">
+                        <PackageCheck className="size-3.5" />
+                        alktx2
+                    </span>
+                    <span className="text-xs font-semibold">
+                        {capabilities?.alktx2_found ? "ok" : "missing"}
+                    </span>
+                </div>
+            </div>
+        </DashboardShell>
+    )
+}
+
+function Dashboard() {
+    const { apiStatus } = useDashboard()
 
     const [activeModule, setActiveModule] = useState<ModuleId | null>(null)
     const [activeTool, setActiveTool] = useState<ToolId | null>(null)
@@ -78,7 +119,7 @@ function Dashboard() {
                 <div className="app-grid-layer absolute inset-0" />
             </div>
 
-            <div className="relative mx-auto flex min-h-screen max-w-[1540px] gap-4 px-3 py-4 sm:px-5 lg:px-6">
+            <div className="relative mx-auto flex min-h-screen max-w-[1540px] gap-4 px-3 py-4 sm:px-5 lg:px-6 min-[1700px]:max-w-[1866px]">
                 <aside className="hidden w-[310px] shrink-0 lg:block">
                     <div className="sticky top-4 space-y-4">
                         <DashboardShell innerClassName="p-4">
@@ -236,40 +277,9 @@ function Dashboard() {
                             )}
                         </DashboardShell>
 
-                        <DashboardShell innerClassName="p-4">
-                            <div className="grid gap-2">
-                                <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
-                                    <span className="app-faint flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em]">
-                                        <Server className="size-3.5" />
-                                        API
-                                    </span>
-                                    <span
-                                        className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]"
-                                        data-tone={apiStatus === "online" ? "good" : apiStatus === "offline" ? "bad" : undefined}
-                                    >
-                                        {apiStatus}
-                                    </span>
-                                </div>
-                                <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
-                                    <span className="app-faint flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em]">
-                                        <Cpu className="size-3.5" />
-                                        toktx
-                                    </span>
-                                    <span className="text-xs font-semibold">
-                                        {toktxFound === null ? "checking" : toktxFound ? "ok" : "missing"}
-                                    </span>
-                                </div>
-                                <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
-                                    <span className="app-faint flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em]">
-                                        <PackageCheck className="size-3.5" />
-                                        alktx2
-                                    </span>
-                                    <span className="text-xs font-semibold">
-                                        {capabilities?.alktx2_found ? "ok" : "missing"}
-                                    </span>
-                                </div>
-                            </div>
-                        </DashboardShell>
+                        <div className="min-[1700px]:hidden">
+                            <StatusPanel />
+                        </div>
                     </div>
                 </aside>
 
@@ -340,6 +350,12 @@ function Dashboard() {
                         </span>
                     </footer>
                 </main>
+
+                <aside className="hidden w-[310px] shrink-0 min-[1700px]:block">
+                    <div className="sticky top-4">
+                        <StatusPanel />
+                    </div>
+                </aside>
             </div>
         </div>
     )
