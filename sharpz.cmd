@@ -22,6 +22,10 @@ if /i "%ACAO%"=="1" set "ACAO=instalar"
 if /i "%ACAO%"=="2" set "ACAO=abrir"
 if /i "%ACAO%"=="3" set "ACAO=producao"
 if /i "%ACAO%"=="4" set "ACAO=testar"
+if /i "%ACAO%"=="install" set "ACAO=instalar"
+if /i "%ACAO%"=="open" set "ACAO=abrir"
+if /i "%ACAO%"=="prod" set "ACAO=producao"
+if /i "%ACAO%"=="test" set "ACAO=testar"
 
 if /i "%ACAO%"=="instalar" call "%SCRIPTS%\sharpz-setup.cmd" & exit /b
 if /i "%ACAO%"=="abrir" call "%SCRIPTS%\sharpz-dev.cmd" & exit /b
