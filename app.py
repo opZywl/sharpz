@@ -1,13 +1,3 @@
-"""Gradio web UI for cleanup-image.
-
-Visual design replicates lucas-lima.xyz: dark-first theme, inset glow
-cards, blue glow blobs, Space Grotesk typography, Win11-style sliders,
-and CSS keyframe animations matching Framer Motion entry patterns.
-
-Run with:  python app.py
-Then open: http://127.0.0.1:7860
-"""
-
 from __future__ import annotations
 
 import tempfile
@@ -30,7 +20,6 @@ from src.processor import (
 )
 from src.processor import _pick_chroma_key  # noqa: PLC2701  (internal helper)
 
-# KTX2 batch converter — pipeline pro portfolio 3D world (yzy/static/projects/)
 from src.ktx import (
     DEFAULT_PRESET as KTX_DEFAULT_PRESET,
     batch_convert as ktx_batch_convert,
@@ -222,14 +211,11 @@ def full_pipeline_action(
     )
 
 
-# ============================================================================
-# CSS — replicates lucas-lima.xyz design language
-# ============================================================================
 
-PORTFOLIO_CSS = """
+APP_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
-/* ────────── Design tokens (lucas-lima.xyz palette) ────────── */
+/* ────────── Design tokens ────────── */
 :root {
   --bg: hsl(0 0% 7%);
   --bg-elev: hsl(0 0% 10%);
@@ -245,7 +231,7 @@ PORTFOLIO_CSS = """
   --accent-blue-soft: rgba(96, 165, 250, 0.4);
   --accent-violet: #8b5cf6;
   --accent-cyan: #4cc2ff;
-  --accent-claude: #10a37f;
+  --accent-green: #10a37f;
   --accent-orange: #d97757;
   --shadow-card: 0 0px 60px -25px #ffffff1f inset, 0px 0px 40px 5px #c6c6c635 inset;
   --shadow-soft: 0 3px 13px 0px #00000020;
@@ -366,7 +352,7 @@ body::after {
 }
 #hero .badge.b-blue { background: rgba(96,165,250,0.10); border-color: rgba(96,165,250,0.25); color: #93c5fd; }
 #hero .badge.b-violet { background: rgba(139,92,246,0.10); border-color: rgba(139,92,246,0.25); color: #c4b5fd; }
-#hero .badge.b-claude { background: rgba(16,163,127,0.12); border-color: rgba(16,163,127,0.30); color: #6ee7b7; }
+#hero .badge.b-green { background: rgba(16,163,127,0.12); border-color: rgba(16,163,127,0.30); color: #6ee7b7; }
 
 /* ────────── Tabs ────────── */
 .tabs > .tab-nav, .tabs .tab-nav, .tab-nav, button.tab-nav-button { background: transparent !important; }
@@ -401,7 +387,7 @@ body::after {
   background: rgba(255,255,255,0.03) !important;
 }
 
-/* ────────── Cards / panels (the lucas-lima.xyz signature) ────────── */
+/* ────────── Cards / panels ────────── */
 .gr-block, .gr-form, .form, .panel, .gr-panel,
 div[class*="block-"], div[class*="form-"] {
   background: var(--bg-elev) !important;
@@ -457,7 +443,7 @@ button.gr-button, .gr-button {
   letter-spacing: 0.005em !important;
 }
 
-/* Primary button (matches portfolio default variant: dark on light or light on dark) */
+/* Primary button */
 button.primary, .gr-button.primary {
   background: linear-gradient(135deg, #fafafa 0%, #e4e4e7 100%) !important;
   color: #0a0a0f !important;
@@ -689,7 +675,7 @@ button.primary.processing::after {
 HERO_HTML = """
 <div id="hero">
   <div class="hero-inner">
-    <h1>Cleanup Image</h1>
+    <h1>Sharpz</h1>
     <p>
       Remoção de fundo de alta fidelidade com <b>luma keying</b> (Unmult) para neon/glow
       e <b>segmentação AI</b> (BiRefNet · ISNet · U2Net) para fotos. Vetorização PNG → SVG
@@ -702,15 +688,6 @@ HERO_HTML = """
   </div>
 </div>
 """
-
-FOOTER_HTML = """
-<div id="footer">
-  <div style="margin-top:8px; opacity:0.6;">
-    Inspired by <a href="https://lucas-lima.xyz" target="_blank" style="color:#93c5fd; text-decoration:none;">lucas-lima.xyz</a>
-  </div>
-</div>
-"""
-
 
 def convert_ktx_single_action(
     image: Image.Image | None,
@@ -809,7 +786,7 @@ def convert_ktx_batch_action(
 
 
 def build_app() -> gr.Blocks:
-    with gr.Blocks(title="Cleanup Image · lucas-lima.xyz") as demo:
+    with gr.Blocks(title="Sharpz") as demo:
         gr.HTML(HERO_HTML)
 
         with gr.Tabs():
@@ -1098,7 +1075,6 @@ def build_app() -> gr.Blocks:
                         outputs=[ktx_batch_status],
                     )
 
-        gr.HTML(FOOTER_HTML)
 
     return demo
 
@@ -1150,5 +1126,5 @@ if __name__ == "__main__":
             slider_color="#4cc2ff",
             slider_color_dark="#4cc2ff",
         ),
-        css=PORTFOLIO_CSS,
+        css=APP_CSS,
     )
