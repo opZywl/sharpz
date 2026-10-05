@@ -1,3 +1,5 @@
+import { responseError } from "@/lib/dashboard-utils"
+
 export interface ImgPdfLog {
     level: "info" | "warn" | "ok"
     message: string
@@ -61,19 +63,13 @@ const BASE = "/api/image-to-pdf"
 
 export async function startImageToPdf(form: FormData): Promise<StartImgPdfResult> {
     const response = await fetch(BASE, { method: "POST", body: form })
-    if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || `HTTP ${response.status}`)
-    }
+    if (!response.ok) throw await responseError(response)
     return (await response.json()) as StartImgPdfResult
 }
 
 export async function getImgPdfJob(jobId: string): Promise<ImgPdfJob> {
     const response = await fetch(`${BASE}/jobs/${jobId}`)
-    if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || `HTTP ${response.status}`)
-    }
+    if (!response.ok) throw await responseError(response)
     return (await response.json()) as ImgPdfJob
 }
 
@@ -99,16 +95,11 @@ export function imgPdfPreviewUrl(jobId: string): string {
 
 export async function openImgPdfFolder(jobId: string): Promise<void> {
     const response = await fetch(`${BASE}/jobs/${jobId}/open-folder`, { method: "POST" })
-    if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || `HTTP ${response.status}`)
-    }
+    if (!response.ok) throw await responseError(response)
 }
 
 export async function getImgPdfCapabilities(): Promise<ImgPdfCapabilities> {
     const response = await fetch(`${BASE}/capabilities`)
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-    }
+    if (!response.ok) throw await responseError(response)
     return (await response.json()) as ImgPdfCapabilities
 }

@@ -5,7 +5,6 @@ import {
     ChevronDown,
     ChevronRight,
     Cpu,
-    Gauge,
     Home,
     PackageCheck,
     Search,
@@ -38,25 +37,25 @@ function StatusPanel() {
                         className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]"
                         data-tone={apiStatus === "online" ? "good" : apiStatus === "offline" ? "bad" : undefined}
                     >
-                        {apiStatus}
+                        {apiStatus === "checking" ? "verificando" : apiStatus}
                     </span>
                 </div>
                 <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
                     <span className="app-faint flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em]">
                         <Cpu className="size-3.5" />
-                        toktx
+                        Texturas KTX
                     </span>
                     <span className="text-xs font-semibold">
-                        {toktxFound === null ? "checking" : toktxFound ? "ok" : "missing"}
+                        {toktxFound === null ? "verificando" : toktxFound ? "ok" : "faltando"}
                     </span>
                 </div>
                 <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
                     <span className="app-faint flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em]">
                         <PackageCheck className="size-3.5" />
-                        alktx2
+                        Portfolio KTX
                     </span>
                     <span className="text-xs font-semibold">
-                        {capabilities?.alktx2_found ? "ok" : "missing"}
+                        {capabilities?.alktx2_found ? "ok" : "faltando"}
                     </span>
                 </div>
             </div>
@@ -326,7 +325,7 @@ function Dashboard() {
                                         className="status-pill px-3 py-2 text-xs font-semibold"
                                         data-tone={apiStatus === "online" ? "good" : apiStatus === "offline" ? "bad" : undefined}
                                     >
-                                        API {apiStatus}
+                                        API {apiStatus === "checking" ? "verificando" : apiStatus}
                                     </span>
                                     <ThemeToggle />
                                 </div>
@@ -341,14 +340,6 @@ function Dashboard() {
                     ) : (
                         <ModuleGrid onPickModule={openModule} />
                     )}
-
-                    <footer className="app-faint flex flex-wrap items-center justify-between gap-3 pb-4 text-xs">
-                        <span>rembg - vtracer - resvg - FastAPI - Next.js</span>
-                        <span className="inline-flex items-center gap-2">
-                            <Gauge className="size-3.5" />
-                            UI inspirada no portfolio, com light/dark real
-                        </span>
-                    </footer>
                 </main>
 
                 <aside className="hidden w-[310px] shrink-0 min-[1700px]:block">

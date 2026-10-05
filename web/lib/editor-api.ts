@@ -1,3 +1,5 @@
+import { responseError } from "@/lib/dashboard-utils"
+
 export type ElType = "text" | "icon" | "rect" | "line" | "image"
 
 export interface EditorElement {
@@ -43,9 +45,7 @@ export async function importDoc(file: File, renderBg = false): Promise<EditorDoc
     fd.append("file", file)
     fd.append("render_bg", String(renderBg))
     const res = await fetch(`${BASE}/import`, { method: "POST", body: fd })
-    if (!res.ok) {
-        throw new Error((await res.text()) || `HTTP ${res.status}`)
-    }
+    if (!res.ok) throw await responseError(res)
     return (await res.json()) as EditorDoc
 }
 
@@ -59,9 +59,7 @@ export async function exportPdf(doc: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(doc),
     })
-    if (!res.ok) {
-        throw new Error((await res.text()) || `HTTP ${res.status}`)
-    }
+    if (!res.ok) throw await responseError(res)
     return await res.blob()
 }
 
@@ -71,9 +69,7 @@ export async function renderHtml(html: string): Promise<Blob> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ html }),
     })
-    if (!res.ok) {
-        throw new Error((await res.text()) || `HTTP ${res.status}`)
-    }
+    if (!res.ok) throw await responseError(res)
     return await res.blob()
 }
 
@@ -83,8 +79,6 @@ export async function renderPng(html: string, w: number, h: number): Promise<Blo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ html, w, h, scale: 2 }),
     })
-    if (!res.ok) {
-        throw new Error((await res.text()) || `HTTP ${res.status}`)
-    }
+    if (!res.ok) throw await responseError(res)
     return await res.blob()
 }

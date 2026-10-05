@@ -18,29 +18,66 @@ to aggressive precision settings; for logos use binary mode.
 
 from __future__ import annotations
 
+import gc
 import io
+import os
 import tempfile
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 import numpy as np
+import onnxruntime as ort
+import rembg.bg as rembg_bg
 import vtracer
 from PIL import Image, ImageEnhance, ImageFilter
-from rembg import new_session, remove
+from pymatting.alpha.estimate_alpha_cf import estimate_alpha_cf
+from pymatting.preconditioner.ichol import ichol
+from rembg import remove
+from rembg.sessions import sessions_class
+
+from src.memory import is_out_of_memory
 
 
 AVAILABLE_MODELS: dict[str, str] = {
-    "birefnet-general": "BiRefNet General — highest quality (slower, ~900MB)",
-    "birefnet-general-lite": "BiRefNet Lite — high quality, faster",
-    "birefnet-portrait": "BiRefNet Portrait — best for people/faces",
-    "isnet-general-use": "ISNet — strong edges, balanced speed",
-    "u2net": "U2Net — classic, fast, general purpose",
-    "u2net_human_seg": "U2Net Human — optimized for humans",
-    "sam": "Segment Anything — interactive, prompt-based",
+    "isnet-general-use": "ISNet (rápido)",
+    "birefnet-general-lite": "BiRefNet Lite (detalhado)",
+    "birefnet-general": "BiRefNet (qualidade máxima)",
+    "u2net": "U2Net (mais leve)",
+    "birefnet-portrait": "BiRefNet Retrato (pessoas)",
+    "u2net_human_seg": "U2Net Pessoas (leve)",
+    "sam": "Segment Anything (objeto central)",
 }
 
-DEFAULT_MODEL = "birefnet-general"
+MODEL_DETAILS: dict[str, str] = {
+    "isnet-general-use": "Leve e rápido: ~1,5 GB de RAM no pico, bom para a maioria das imagens (~180 MB).",
+    "birefnet-general-lite": "Recorte mais fino em cabelo e bordas, mas usa ~6 GB de RAM no pico e é bem mais lento (~220 MB).",
+    "birefnet-general": "Melhor recorte, mas o mais pesado: ~970 MB e muitos GB de RAM. Pode deixar o PC lento.",
+    "u2net": "O mais leve e rápido; recorte mais simples (~175 MB).",
+    "birefnet-portrait": "Especialista em pessoas e rostos. Pesado como o BiRefNet: ~970 MB e muitos GB de RAM.",
+    "u2net_human_seg": "Leve, focado em pessoas de corpo inteiro (~175 MB).",
+    "sam": "Recorta o objeto que está no centro da imagem.",
+}
+
+DEFAULT_MODEL = "isnet-general-use"
+HEAVY_MODELS = frozenset({"birefnet-general", "birefnet-portrait", "birefnet-general-lite"})
+MODEL_WEIGHT_ORDER = (
+    "birefnet-general",
+    "birefnet-portrait",
+    "birefnet-general-lite",
+    "sam",
+    "isnet-general-use",
+    "u2net_human_seg",
+    "u2net",
+)
+LIGHTER_MODELS = ("isnet-general-use", "birefnet-general-lite", "u2net")
+MODEL_FILES: dict[str, tuple[str, ...]] = {
+    "sam": ("sam_vit_b_01ec64.encoder.onnx", "sam_vit_b_01ec64.decoder.onnx"),
+}
+SESSION_IDLE_SECONDS = 600
+ICHOL_MAX_NNZ = int(4e9 / 16)
 
 Method = Literal["auto", "ai", "luma_dark", "luma_light", "none"]
 ColorMode = Literal["color", "binary"]
@@ -48,6 +85,56 @@ Hierarchical = Literal["stacked", "cutout"]
 PathMode = Literal["spline", "polygon", "none"]
 
 _session_cache: dict[str, object] = {}
+_session_lock = threading.RLock()
+_last_used = 0.0
+_idle_timer: threading.Timer | None = None
+
+
+def memory_message(model: str | None = None, alpha_matting: bool = False) -> str:
+    if model is None:
+        return (
+            "Memória insuficiente para concluir a operação. "
+            "Feche outros programas ou use uma imagem menor e tente de novo."
+        )
+    rank = MODEL_WEIGHT_ORDER.index(model) if model in MODEL_WEIGHT_ORDER else -1
+    lighter = [
+        AVAILABLE_MODELS[key]
+        for key in LIGHTER_MODELS
+        if MODEL_WEIGHT_ORDER.index(key) > rank
+    ][:2]
+    parts = [f"Memória insuficiente para rodar o modelo {AVAILABLE_MODELS.get(model, model)}."]
+    if lighter:
+        parts.append(f"Feche outros programas ou escolha um modelo mais leve: {' ou '.join(lighter)}.")
+    else:
+        parts.append("Feche outros programas ou use uma imagem menor.")
+    if alpha_matting:
+        parts.append("Desligar o Alpha matting também reduz o uso de memória.")
+    return " ".join(parts)
+
+
+class ModelOutOfMemory(MemoryError):
+    def __init__(self, model: str, alpha_matting: bool = False) -> None:
+        self.model = model
+        super().__init__(memory_message(model, alpha_matting))
+
+
+def _sized_ichol(matrix):
+    max_nnz = min(ICHOL_MAX_NNZ, max(1_000_000, 4 * matrix.nnz))
+    while True:
+        try:
+            return ichol(matrix, max_nnz=max_nnz)
+        except ValueError as exc:
+            if "max_nnz" not in str(exc) or max_nnz >= ICHOL_MAX_NNZ:
+                raise
+            max_nnz = min(ICHOL_MAX_NNZ, max_nnz * 4)
+
+
+def _estimate_alpha_cf(image, trimap, **kwargs):
+    kwargs.setdefault("preconditioner", _sized_ichol)
+    return estimate_alpha_cf(image, trimap, **kwargs)
+
+
+rembg_bg.estimate_alpha_cf = _estimate_alpha_cf
 
 
 @dataclass
@@ -111,11 +198,63 @@ class VectorOptions:
     upscale: float = 1.0
 
 
+def _session_class(model: str):
+    for session_class in sessions_class:
+        if session_class.name() == model:
+            return session_class
+    raise ValueError(f"Modelo desconhecido: {model}")
+
+
+def model_downloaded(model: str) -> bool:
+    try:
+        home = Path(_session_class(model).u2net_home())
+    except ValueError:
+        return False
+    return all((home / name).exists() for name in MODEL_FILES.get(model, (f"{model}.onnx",)))
+
+
+def _new_session(model: str):
+    options = ort.SessionOptions()
+    options.enable_cpu_mem_arena = False
+    options.enable_mem_pattern = False
+    if "OMP_NUM_THREADS" in os.environ:
+        threads = int(os.environ["OMP_NUM_THREADS"])
+        options.inter_op_num_threads = threads
+        options.intra_op_num_threads = threads
+    return _session_class(model)(model, options)
+
+
 def _get_session(model: str):
-    """Cache rembg sessions — model load is the slow part."""
-    if model not in _session_cache:
-        _session_cache[model] = new_session(model)
-    return _session_cache[model]
+    session = _session_cache.get(model)
+    if session is None:
+        _session_cache.clear()
+        gc.collect()
+        session = _new_session(model)
+        _session_cache[model] = session
+    return session
+
+
+def release_sessions() -> None:
+    with _session_lock:
+        _session_cache.clear()
+    gc.collect()
+
+
+def _release_if_idle() -> None:
+    with _session_lock:
+        if not _session_cache or time.monotonic() - _last_used < SESSION_IDLE_SECONDS:
+            return
+        _session_cache.clear()
+    gc.collect()
+
+
+def _schedule_idle_release() -> None:
+    global _idle_timer
+    if _idle_timer is not None:
+        _idle_timer.cancel()
+    _idle_timer = threading.Timer(SESSION_IDLE_SECONDS, _release_if_idle)
+    _idle_timer.daemon = True
+    _idle_timer.start()
 
 
 def _load_image(source: str | Path | bytes | Image.Image) -> Image.Image:
@@ -239,16 +378,27 @@ def _luma_key(
 
 
 def _ai_remove(img: Image.Image, opts: BackgroundOptions) -> Image.Image:
-    session = _get_session(opts.model)
-    result = remove(
-        img,
-        session=session,
-        alpha_matting=opts.alpha_matting,
-        alpha_matting_foreground_threshold=opts.alpha_matting_foreground_threshold,
-        alpha_matting_background_threshold=opts.alpha_matting_background_threshold,
-        alpha_matting_erode_size=opts.alpha_matting_erode_size,
-        post_process_mask=opts.post_process_mask,
-    )
+    global _last_used
+    with _session_lock:
+        try:
+            session = _get_session(opts.model)
+            result = remove(
+                img,
+                session=session,
+                alpha_matting=opts.alpha_matting,
+                alpha_matting_foreground_threshold=opts.alpha_matting_foreground_threshold,
+                alpha_matting_background_threshold=opts.alpha_matting_background_threshold,
+                alpha_matting_erode_size=opts.alpha_matting_erode_size,
+                post_process_mask=opts.post_process_mask,
+            )
+        except Exception as exc:
+            if is_out_of_memory(exc):
+                _session_cache.clear()
+                raise ModelOutOfMemory(opts.model, opts.alpha_matting) from exc
+            raise
+        finally:
+            _last_used = time.monotonic()
+    _schedule_idle_release()
     if not isinstance(result, Image.Image):
         result = Image.open(io.BytesIO(result))
     return result.convert("RGBA")

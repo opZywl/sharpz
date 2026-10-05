@@ -693,14 +693,11 @@ HERO_HTML = """
     <p>
       Remoção de fundo de alta fidelidade com <b>luma keying</b> (Unmult) para neon/glow
       e <b>segmentação AI</b> (BiRefNet · ISNet · U2Net) para fotos. Vetorização PNG → SVG
-      via vtracer com dois traces simultâneos: um <b>com fundo</b> e um <b>clean transparente</b>.
+      com dois traces simultâneos: um <b>com fundo</b> e um <b>clean transparente</b>.
     </p>
     <div class="badges">
       <span class="badge b-blue">Luma Keying</span>
       <span class="badge b-violet">BiRefNet</span>
-      <span class="badge b-claude">VTracer</span>
-      <span class="badge">Resvg</span>
-      <span class="badge">Gradio</span>
     </div>
   </div>
 </div>
@@ -708,9 +705,6 @@ HERO_HTML = """
 
 FOOTER_HTML = """
 <div id="footer">
-  <div>
-    Built with <code>rembg</code> · <code>vtracer</code> · <code>resvg</code> · <code>Gradio</code>
-  </div>
   <div style="margin-top:8px; opacity:0.6;">
     Inspired by <a href="https://lucas-lima.xyz" target="_blank" style="color:#93c5fd; text-decoration:none;">lucas-lima.xyz</a>
   </div>

@@ -131,7 +131,7 @@ export function SelectField<T extends string>({
                                     setOpen(false)
                                 }}
                             >
-                                <span className="min-w-0 truncate">{option.label}</span>
+                                <span className="min-w-0 break-words">{option.label}</span>
                                 {selected ? <Check className="size-3.5 shrink-0" /> : null}
                             </button>
                         )

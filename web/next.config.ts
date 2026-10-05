@@ -3,6 +3,9 @@ import type { NextConfig } from "next"
 const nextConfig: NextConfig = {
     reactStrictMode: true,
     devIndicators: false,
+    experimental: {
+        proxyTimeout: 30 * 60 * 1000,
+    },
     async rewrites() {
         return [
             {

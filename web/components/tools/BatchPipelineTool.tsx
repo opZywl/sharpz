@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion"
 import { Activity, AlertTriangle, FolderOpen, Loader2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 
 import {
     cardEnter,
@@ -15,13 +15,13 @@ import {
     TextField,
 } from "@/components/dashboard/primitives"
 import { useDashboard } from "@/components/dashboard/DashboardProvider"
+import { ModelField } from "@/components/dashboard/ModelField"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import {
     BatchPipelineResult,
     ColorMode,
     colorModeOptions,
-    DEFAULT_MODEL,
     Hierarchical,
     Method,
     methodOptions,
@@ -30,7 +30,7 @@ import {
 import { appendFields, postForm } from "@/lib/dashboard-utils"
 
 export function BatchPipelineTool() {
-    const { modelOptions, defaultModel } = useDashboard()
+    const { defaultModel } = useDashboard()
 
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -41,7 +41,7 @@ export function BatchPipelineTool() {
         outputPath: "output",
         recursive: true,
         method: "auto" as Method,
-        model: DEFAULT_MODEL,
+        model: null as string | null,
         alphaMatting: true,
         fgThreshold: 240,
         bgThreshold: 10,
@@ -72,10 +72,6 @@ export function BatchPipelineTool() {
         flattenColor: "#000000",
     })
 
-    useEffect(() => {
-        setBatchPipeline((current) => ({ ...current, model: current.model || defaultModel }))
-    }, [defaultModel])
-
     async function runBatchPipeline() {
         setBusy(true)
         setError(null)
@@ -86,7 +82,7 @@ export function BatchPipelineTool() {
                 output_dir: batchPipeline.outputPath,
                 recursive: batchPipeline.recursive,
                 method: batchPipeline.method,
-                model: batchPipeline.model,
+                model: batchPipeline.model ?? defaultModel,
                 alpha_matting: batchPipeline.alphaMatting,
                 alpha_matting_foreground_threshold: batchPipeline.fgThreshold,
                 alpha_matting_background_threshold: batchPipeline.bgThreshold,
@@ -138,7 +134,7 @@ export function BatchPipelineTool() {
             ) : null}
 
             <motion.div {...cardEnter}>
-                <Panel title="Batch Pipeline" subtitle="Mesmo poder do CLI pela web, usando caminhos locais absolutos." icon={FolderOpen}>
+                <Panel title="Batch Pipeline" subtitle="Processa uma pasta inteira de imagens. Use o caminho completo da pasta neste computador." icon={FolderOpen}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
                             <TextField label="Input path" value={batchPipeline.inputPath} onChange={(inputPath) => setBatchPipeline((current) => ({ ...current, inputPath }))} placeholder="C:/caminho/para/imagens" />
@@ -146,7 +142,7 @@ export function BatchPipelineTool() {
                         </div>
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             <SelectField label="Metodo" value={batchPipeline.method} options={methodOptions} onChange={(method) => setBatchPipeline((current) => ({ ...current, method }))} />
-                            <SelectField label="Modelo AI" value={batchPipeline.model} options={modelOptions} onChange={(model) => setBatchPipeline((current) => ({ ...current, model }))} />
+                            <ModelField value={batchPipeline.model ?? defaultModel} onChange={(model) => setBatchPipeline((current) => ({ ...current, model }))} />
                             <SelectField label="Modo SVG" value={batchPipeline.colorMode} options={colorModeOptions} onChange={(colorMode) => setBatchPipeline((current) => ({ ...current, colorMode }))} />
                             <ColorField label="Fundo SVG" value={batchPipeline.flattenColor} onChange={(flattenColor) => setBatchPipeline((current) => ({ ...current, flattenColor }))} />
                         </div>
@@ -164,8 +160,9 @@ export function BatchPipelineTool() {
                             <Slider label="Speckle" value={batchPipeline.filterSpeckle} min={0} max={20} step={1} onChange={(filterSpeckle) => setBatchPipeline((current) => ({ ...current, filterSpeckle }))} />
                             <Slider label="Precision" value={batchPipeline.colorPrecision} min={1} max={8} step={1} onChange={(colorPrecision) => setBatchPipeline((current) => ({ ...current, colorPrecision }))} />
                         </div>
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                             <CheckboxRow checked={batchPipeline.recursive} onChange={(recursive) => setBatchPipeline((current) => ({ ...current, recursive }))} label="Recursivo" />
+                            <CheckboxRow checked={batchPipeline.alphaMatting} onChange={(alphaMatting) => setBatchPipeline((current) => ({ ...current, alphaMatting }))} label="Alpha matting" helper="Refina bordas na IA (mais lento)." />
                             <CheckboxRow checked={batchPipeline.noSvg} onChange={(noSvg) => setBatchPipeline((current) => ({ ...current, noSvg }))} label="Sem SVG" helper="Gera apenas PNG limpo." />
                             <CheckboxRow checked={batchPipeline.noBgRemoval} onChange={(noBgRemoval) => setBatchPipeline((current) => ({ ...current, noBgRemoval }))} label="Sem remover fundo" helper="Apenas vetoriza." />
                             <CheckboxRow checked={batchPipeline.edgeSmooth} onChange={(edgeSmooth) => setBatchPipeline((current) => ({ ...current, edgeSmooth }))} label="Suavizar borda" />

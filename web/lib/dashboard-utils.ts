@@ -18,12 +18,42 @@ export function appendFields(fd: FormData, fields: Record<string, string | numbe
     Object.entries(fields).forEach(([key, value]) => fd.append(key, String(value)))
 }
 
-export async function postForm<T>(url: string, fd: FormData): Promise<T> {
-    const response = await fetch(url, { method: "POST", body: fd })
-    if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || `HTTP ${response.status}`)
+function errorDetail(text: string): unknown {
+    try {
+        return JSON.parse(text)?.detail
+    } catch {
+        return undefined
     }
+}
+
+export async function responseError(response: Response): Promise<Error> {
+    const text = (await response.text().catch(() => "")).trim()
+    const detail = errorDetail(text)
+    if (typeof detail === "string" && detail.trim()) return new Error(detail.trim())
+    if (Array.isArray(detail) && detail.length) {
+        const fields = detail
+            .map((item) => (Array.isArray(item?.loc) ? item.loc[item.loc.length - 1] : null))
+            .filter((field): field is string => typeof field === "string")
+        return new Error(
+            fields.length ? `Preencha os campos obrigatórios: ${fields.join(", ")}.` : "Dados inválidos no formulário.",
+        )
+    }
+    if (response.status >= 500) {
+        return new Error(
+            `O servidor não respondeu (HTTP ${response.status}). Ele pode estar desligado ou ter demorado demais; confira se o Sharpz está rodando e tente de novo.`,
+        )
+    }
+    return new Error(text || `Erro HTTP ${response.status}.`)
+}
+
+export async function postForm<T>(url: string, fd: FormData): Promise<T> {
+    let response: Response
+    try {
+        response = await fetch(url, { method: "POST", body: fd })
+    } catch {
+        throw new Error("Não consegui falar com o servidor do Sharpz. Confira se ele está rodando e tente de novo.")
+    }
+    if (!response.ok) throw await responseError(response)
     return (await response.json()) as T
 }
 

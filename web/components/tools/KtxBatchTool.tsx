@@ -75,7 +75,7 @@ export function KtxBatchTool() {
             ) : null}
 
             <motion.div {...cardEnter}>
-                <Panel title="Batch KTX" subtitle="Use caminhos locais absolutos. O backend processa a pasta no Windows." icon={FolderSync}>
+                <Panel title="Batch KTX" subtitle="Use o caminho completo das pastas neste computador." icon={FolderSync}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
                             <TextField label="Pasta input" value={ktxBatch.folderPath} onChange={(folderPath) => setKtxBatch((current) => ({ ...current, folderPath }))} placeholder="C:/Users/zywl/WebstormProjects/portfolio/yzy/static/..." />

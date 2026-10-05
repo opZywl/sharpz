@@ -80,10 +80,10 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
 
     const modelOptions = useMemo(
         () =>
-            (models.length ? models : [{ key: DEFAULT_MODEL, label: "BiRefNet General", is_default: true }]).map(
+            (models.length ? models : [{ key: DEFAULT_MODEL, label: "ISNet (rápido)", is_default: true }]).map(
                 (model) => ({
                     value: model.key,
-                    label: model.is_default ? `${model.key} *` : model.key,
+                    label: model.is_default ? `${model.label} *` : model.label,
                 }),
             ),
         [models],

@@ -1,3 +1,5 @@
+import { responseError } from "@/lib/dashboard-utils"
+
 export interface TranscribeWord {
     start: number
     end: number
@@ -85,19 +87,13 @@ const BASE = "/api/transcribe"
 
 export async function startTranscription(form: FormData): Promise<StartTranscriptionResult> {
     const response = await fetch(BASE, { method: "POST", body: form })
-    if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || `HTTP ${response.status}`)
-    }
+    if (!response.ok) throw await responseError(response)
     return (await response.json()) as StartTranscriptionResult
 }
 
 export async function getJob(jobId: string): Promise<TranscribeJob> {
     const response = await fetch(`${BASE}/jobs/${jobId}`)
-    if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || `HTTP ${response.status}`)
-    }
+    if (!response.ok) throw await responseError(response)
     return (await response.json()) as TranscribeJob
 }
 
@@ -128,19 +124,13 @@ export async function summarize(jobId: string, options: SummarizeOptions): Promi
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(options),
     })
-    if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || `HTTP ${response.status}`)
-    }
+    if (!response.ok) throw await responseError(response)
     return (await response.json()) as SummarizeResult
 }
 
 export async function getComplete(jobId: string): Promise<CompleteManifest> {
     const response = await fetch(`${BASE}/jobs/${jobId}/complete`)
-    if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || `HTTP ${response.status}`)
-    }
+    if (!response.ok) throw await responseError(response)
     return (await response.json()) as CompleteManifest
 }
 
@@ -154,25 +144,18 @@ export function completeZipUrl(jobId: string): string {
 
 export async function openCompleteFolder(jobId: string): Promise<void> {
     const response = await fetch(`${BASE}/jobs/${jobId}/complete/open-folder`, { method: "POST" })
-    if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || `HTTP ${response.status}`)
-    }
+    if (!response.ok) throw await responseError(response)
 }
 
 export async function getModels(): Promise<TranscribeModel[]> {
     const response = await fetch(`${BASE}/models`)
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-    }
+    if (!response.ok) throw await responseError(response)
     const data = (await response.json()) as { models: TranscribeModel[] }
     return data.models
 }
 
 export async function getCapabilities(): Promise<TranscribeCapabilities> {
     const response = await fetch(`${BASE}/capabilities`)
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-    }
+    if (!response.ok) throw await responseError(response)
     return (await response.json()) as TranscribeCapabilities
 }

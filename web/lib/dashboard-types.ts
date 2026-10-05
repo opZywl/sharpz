@@ -7,6 +7,9 @@ export interface ModelInfo {
     key: string
     label: string
     is_default: boolean
+    detail?: string
+    heavy?: boolean
+    downloaded?: boolean
 }
 
 export interface PipelineResult {
@@ -118,7 +121,7 @@ export interface CapabilityInfo {
     endpoints: string[]
 }
 
-export const DEFAULT_MODEL = "birefnet-general"
+export const DEFAULT_MODEL = "isnet-general-use"
 export const DEFAULT_KTX_PRESET = "ultra"
 
 export const methodOptions: Array<{ value: Method; label: string }> = [

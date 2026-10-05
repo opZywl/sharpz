@@ -15,13 +15,13 @@ import {
     SelectField,
 } from "@/components/dashboard/primitives"
 import { useDashboard } from "@/components/dashboard/DashboardProvider"
+import { ModelField } from "@/components/dashboard/ModelField"
 import { Dropzone } from "@/components/dropzone"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import {
     ColorMode,
     colorModeOptions,
-    DEFAULT_MODEL,
     Method,
     methodOptions,
     PipelineResult,
@@ -36,7 +36,7 @@ const outputFormatOptions: Array<{ value: OutputFormat; label: string }> = [
 ]
 
 export function PipelineTool() {
-    const { modelOptions, defaultModel } = useDashboard()
+    const { defaultModel } = useDashboard()
 
     const [file, setFile] = useState<File | null>(null)
     const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -46,7 +46,8 @@ export function PipelineTool() {
 
     const [pipeline, setPipeline] = useState({
         method: "auto" as Method,
-        model: DEFAULT_MODEL,
+        model: null as string | null,
+        alphaMatting: true,
         outputFormat: "png" as OutputFormat,
         lumaLow: 0.04,
         lumaHigh: 0.95,
@@ -61,10 +62,6 @@ export function PipelineTool() {
         upscale: 1,
         flattenColor: "#000000",
     })
-
-    useEffect(() => {
-        setPipeline((current) => ({ ...current, model: current.model || defaultModel }))
-    }, [defaultModel])
 
     useEffect(() => {
         if (!file) {
@@ -88,7 +85,8 @@ export function PipelineTool() {
             fd.append("file", file)
             appendFields(fd, {
                 method: pipeline.method,
-                model: pipeline.model,
+                model: pipeline.model ?? defaultModel,
+                alpha_matting: pipeline.alphaMatting,
                 output_format: pipeline.outputFormat,
                 luma_low: pipeline.lumaLow,
                 luma_high: pipeline.lumaHigh,
@@ -125,7 +123,7 @@ export function PipelineTool() {
             ) : null}
 
             <motion.div {...cardEnter} className="grid gap-4 xl:grid-cols-[minmax(290px,0.72fr)_minmax(0,1.28fr)]">
-                <Panel title="Fonte" subtitle="O mesmo upload pode alimentar qualquer modulo." icon={ImagePlus}>
+                <Panel title="Fonte" subtitle="Aceita PNG, JPG, WEBP, BMP e TIFF." icon={ImagePlus}>
                     <Dropzone file={file} previewUrl={previewUrl} onChange={setFile} />
                 </Panel>
 
@@ -133,7 +131,7 @@ export function PipelineTool() {
                     <div className="grid gap-4">
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             <SelectField label="Metodo" value={pipeline.method} options={methodOptions} onChange={(method) => setPipeline((current) => ({ ...current, method }))} />
-                            <SelectField label="Modelo AI" value={pipeline.model} options={modelOptions} onChange={(model) => setPipeline((current) => ({ ...current, model }))} />
+                            <ModelField value={pipeline.model ?? defaultModel} onChange={(model) => setPipeline((current) => ({ ...current, model }))} />
                             <SelectField label="Formato de saida" value={pipeline.outputFormat} options={outputFormatOptions} onChange={(outputFormat) => setPipeline((current) => ({ ...current, outputFormat }))} />
                             <ColorField label="Fundo SVG" value={pipeline.flattenColor} onChange={(flattenColor) => setPipeline((current) => ({ ...current, flattenColor }))} />
                         </div>
@@ -149,10 +147,11 @@ export function PipelineTool() {
                             <Slider label="Speckle" value={pipeline.filterSpeckle} min={0} max={20} step={1} onChange={(filterSpeckle) => setPipeline((current) => ({ ...current, filterSpeckle }))} />
                             <Slider label="Precision" value={pipeline.colorPrecision} min={1} max={8} step={1} onChange={(colorPrecision) => setPipeline((current) => ({ ...current, colorPrecision }))} />
                         </div>
-                        <div className="grid gap-3 md:grid-cols-3">
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             <SelectField label="Modo SVG" value={pipeline.colorMode} options={colorModeOptions} onChange={(colorMode) => setPipeline((current) => ({ ...current, colorMode }))} />
                             <Slider label="Upscale" value={pipeline.upscale} min={1} max={3} step={0.25} onChange={(upscale) => setPipeline((current) => ({ ...current, upscale }))} />
                             <CheckboxRow checked={pipeline.lumaUnpremultiply} onChange={(lumaUnpremultiply) => setPipeline((current) => ({ ...current, lumaUnpremultiply }))} label="Unmult" helper="Preserva brilho em fundo escuro." />
+                            <CheckboxRow checked={pipeline.alphaMatting} onChange={(alphaMatting) => setPipeline((current) => ({ ...current, alphaMatting }))} label="Alpha matting" helper="Refina bordas na IA (mais lento)." />
                         </div>
                         <Button onClick={runPipeline} disabled={busy} size="lg" className="w-full">
                             {busy ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}

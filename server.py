@@ -18,6 +18,7 @@ import base64
 import io
 import importlib.util
 import json as _json
+import logging
 import mimetypes
 import shutil
 import tempfile
@@ -30,20 +31,28 @@ from pathlib import Path
 from typing import Literal
 
 import resvg_py
-from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from PIL import Image
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
+from src.memory import is_out_of_memory
 from src.processor import (
     AVAILABLE_MODELS,
     DEFAULT_MODEL,
+    HEAVY_MODELS,
+    MODEL_DETAILS,
     BackgroundOptions,
+    ModelOutOfMemory,
     VectorOptions,
     _pick_chroma_key,  # noqa: PLC2701
+    memory_message,
+    model_downloaded,
     png_to_svg,
     process_image,
+    release_sessions,
     remove_background,
     strip_chroma_paths,
 )
@@ -92,10 +101,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+logger = logging.getLogger("uvicorn.error")
+
+
+async def _memory_error_response(exc: BaseException) -> JSONResponse:
+    await run_in_threadpool(release_sessions)
+    logger.warning("Memoria insuficiente: %r", exc.__cause__ or exc)
+    message = str(exc) if isinstance(exc, ModelOutOfMemory) else memory_message()
+    return JSONResponse(status_code=503, content={"detail": message, "code": "memoria_insuficiente"})
+
+
+@app.exception_handler(MemoryError)
+async def memory_error_handler(request: Request, exc: MemoryError) -> JSONResponse:
+    return await _memory_error_response(exc)
+
+
+@app.exception_handler(Exception)
+async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    if is_out_of_memory(exc):
+        return await _memory_error_response(exc)
+    reason = str(exc).strip()
+    message = f"Erro inesperado no servidor: {reason}" if reason else "Erro inesperado no servidor. Tente de novo."
+    return JSONResponse(status_code=500, content={"detail": message, "code": "erro_interno"})
+
 
 SUPPORTED_BATCH_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
 PORTFOLIO_KTX_WIDTH = 960
 PORTFOLIO_KTX_HEIGHT = 540
+KTX_MISSING_MESSAGE = "KTX-Software não encontrado. Instale em Baixar pacotes (Texturas KTX) e tente de novo."
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -128,14 +161,29 @@ def _img_to_b64(img: Image.Image, fmt: str = "png") -> str:
 async def _read_upload_image(file: UploadFile) -> tuple[bytes, Image.Image]:
     raw = await file.read()
     if not raw:
-        raise HTTPException(status_code=400, detail="Empty file")
+        raise HTTPException(status_code=400, detail="Arquivo vazio.")
 
     try:
         src_img = Image.open(io.BytesIO(raw))
         src_img.load()
+    except MemoryError:
+        raise
+    except Image.DecompressionBombError as exc:
+        raise HTTPException(
+            status_code=413,
+            detail="Imagem grande demais para processar. Reduza a resolução e tente de novo.",
+        ) from exc
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {exc}") from exc
+        raise HTTPException(
+            status_code=400,
+            detail="Imagem inválida ou formato não suportado. Use PNG, JPG, WEBP, BMP ou TIFF.",
+        ) from exc
     return raw, src_img
+
+
+def _require_model(model: str) -> None:
+    if model not in AVAILABLE_MODELS:
+        raise HTTPException(status_code=400, detail=f"Modelo desconhecido: {model}. Escolha um modelo da lista.")
 
 
 def _render_svg_to_b64_png(svg: str, max_dim: int = 800, background: str | None = None) -> str:
@@ -191,6 +239,9 @@ class ModelInfo(BaseModel):
     key: str
     label: str
     is_default: bool
+    detail: str = ""
+    heavy: bool = False
+    downloaded: bool = True
 
 
 class ModelsResponse(BaseModel):
@@ -386,7 +437,14 @@ async def capabilities() -> CapabilityResponse:
 async def list_models() -> ModelsResponse:
     return ModelsResponse(
         models=[
-            ModelInfo(key=k, label=v, is_default=(k == DEFAULT_MODEL))
+            ModelInfo(
+                key=k,
+                label=v,
+                is_default=(k == DEFAULT_MODEL),
+                detail=MODEL_DETAILS.get(k, ""),
+                heavy=k in HEAVY_MODELS,
+                downloaded=model_downloaded(k),
+            )
             for k, v in AVAILABLE_MODELS.items()
         ]
     )
@@ -414,6 +472,7 @@ async def clean_image(
     use_bg_color: bool = Form(False),
     bg_color: str = Form("#ffffff"),
 ) -> CleanResponse:
+    _require_model(model)
     _, src_img = await _read_upload_image(file)
 
     bg_opts = BackgroundOptions(
@@ -435,22 +494,25 @@ async def clean_image(
         bg_color=_hex_to_rgba(bg_color) if use_bg_color else None,
     )
 
-    t0 = time.perf_counter()
-    cleaned = remove_background(src_img, bg_opts)
-    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+    def work() -> CleanResponse:
+        t0 = time.perf_counter()
+        cleaned = remove_background(src_img, bg_opts)
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
-    actual_method = method
-    if method == "auto":
-        from src.processor import _detect_method  # noqa: PLC2701
-        actual_method = _detect_method(src_img.convert("RGBA"))
+        actual_method = method
+        if method == "auto":
+            from src.processor import _detect_method  # noqa: PLC2701
+            actual_method = _detect_method(src_img.convert("RGBA"))
 
-    return CleanResponse(
-        cleaned_png_b64=_img_to_b64(cleaned, output_format),
-        method_used=actual_method,
-        elapsed_ms=elapsed_ms,
-        image_width=cleaned.width,
-        image_height=cleaned.height,
-    )
+        return CleanResponse(
+            cleaned_png_b64=_img_to_b64(cleaned, output_format),
+            method_used=actual_method,
+            elapsed_ms=elapsed_ms,
+            image_width=cleaned.width,
+            image_height=cleaned.height,
+        )
+
+    return await run_in_threadpool(work)
 
 
 @app.post("/api/svg", response_model=SvgResponse)
@@ -487,30 +549,33 @@ async def vectorize_image(
         upscale=upscale,
     )
 
-    t0 = time.perf_counter()
-    flatten_rgb = _hex_to_rgb(flatten_color)
-    svg_with_bg = png_to_svg(src_img, options=vec_opts, background_color=flatten_rgb)
+    def work() -> SvgResponse:
+        t0 = time.perf_counter()
+        flatten_rgb = _hex_to_rgb(flatten_color)
+        svg_with_bg = png_to_svg(src_img, options=vec_opts, background_color=flatten_rgb)
 
-    chroma_key = _pick_chroma_key(src_img.convert("RGBA"))
-    cutout_opts = dc_replace(vec_opts, hierarchical="cutout")
-    raw_cutout_svg = png_to_svg(src_img, options=cutout_opts, background_color=chroma_key)
-    svg_clean = strip_chroma_paths(raw_cutout_svg, chroma_key)
+        chroma_key = _pick_chroma_key(src_img.convert("RGBA"))
+        cutout_opts = dc_replace(vec_opts, hierarchical="cutout")
+        raw_cutout_svg = png_to_svg(src_img, options=cutout_opts, background_color=chroma_key)
+        svg_clean = strip_chroma_paths(raw_cutout_svg, chroma_key)
 
-    elapsed_ms = int((time.perf_counter() - t0) * 1000)
-    svg_with_bg_preview = _render_svg_to_b64_png(svg_with_bg, max_dim=600)
-    svg_clean_preview = _render_svg_to_b64_png(svg_clean, max_dim=600, background=None)
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        svg_with_bg_preview = _render_svg_to_b64_png(svg_with_bg, max_dim=600)
+        svg_clean_preview = _render_svg_to_b64_png(svg_clean, max_dim=600, background=None)
 
-    return SvgResponse(
-        svg_with_bg=svg_with_bg,
-        svg_clean=svg_clean,
-        svg_with_bg_preview_b64=svg_with_bg_preview,
-        svg_clean_preview_b64=svg_clean_preview,
-        elapsed_ms=elapsed_ms,
-        image_width=src_img.width,
-        image_height=src_img.height,
-        svg_with_bg_bytes=len(svg_with_bg.encode("utf-8")),
-        svg_clean_bytes=len(svg_clean.encode("utf-8")),
-    )
+        return SvgResponse(
+            svg_with_bg=svg_with_bg,
+            svg_clean=svg_clean,
+            svg_with_bg_preview_b64=svg_with_bg_preview,
+            svg_clean_preview_b64=svg_clean_preview,
+            elapsed_ms=elapsed_ms,
+            image_width=src_img.width,
+            image_height=src_img.height,
+            svg_with_bg_bytes=len(svg_with_bg.encode("utf-8")),
+            svg_clean_bytes=len(svg_clean.encode("utf-8")),
+        )
+
+    return await run_in_threadpool(work)
 
 
 @app.post("/api/pipeline", response_model=PipelineResponse)
@@ -519,6 +584,10 @@ async def pipeline(
     output_format: Literal["png", "webp"] = Form("png"),
     method: Literal["auto", "ai", "luma_dark", "luma_light", "none"] = Form("auto"),
     model: str = Form(DEFAULT_MODEL),
+    alpha_matting: bool = Form(True),
+    alpha_matting_foreground_threshold: int = Form(240),
+    alpha_matting_background_threshold: int = Form(10),
+    alpha_matting_erode_size: int = Form(10),
     luma_low: float = Form(0.04),
     luma_high: float = Form(0.95),
     luma_unpremultiply: bool = Form(True),
@@ -532,11 +601,16 @@ async def pipeline(
     upscale: float = Form(1.0),
     flatten_color: str = Form("#000000"),
 ) -> PipelineResponse:
+    _require_model(model)
     _, src_img = await _read_upload_image(file)
 
     bg_opts = BackgroundOptions(
         method=method,
         model=model,
+        alpha_matting=alpha_matting,
+        alpha_matting_foreground_threshold=alpha_matting_foreground_threshold,
+        alpha_matting_background_threshold=alpha_matting_background_threshold,
+        alpha_matting_erode_size=alpha_matting_erode_size,
         luma_threshold_low=luma_low,
         luma_threshold_high=luma_high,
         luma_unpremultiply=luma_unpremultiply,
@@ -552,40 +626,43 @@ async def pipeline(
         upscale=upscale,
     )
 
-    t0 = time.perf_counter()
-    cleaned = remove_background(src_img, bg_opts)
+    def work() -> PipelineResponse:
+        t0 = time.perf_counter()
+        cleaned = remove_background(src_img, bg_opts)
 
-    flatten_rgb = _hex_to_rgb(flatten_color)
-    svg_with_bg = png_to_svg(cleaned, options=vec_opts, background_color=flatten_rgb)
+        flatten_rgb = _hex_to_rgb(flatten_color)
+        svg_with_bg = png_to_svg(cleaned, options=vec_opts, background_color=flatten_rgb)
 
-    chroma_key = _pick_chroma_key(cleaned)
-    cutout_opts = dc_replace(vec_opts, hierarchical="cutout")
-    raw_cutout_svg = png_to_svg(cleaned, options=cutout_opts, background_color=chroma_key)
-    svg_clean = strip_chroma_paths(raw_cutout_svg, chroma_key)
+        chroma_key = _pick_chroma_key(cleaned)
+        cutout_opts = dc_replace(vec_opts, hierarchical="cutout")
+        raw_cutout_svg = png_to_svg(cleaned, options=cutout_opts, background_color=chroma_key)
+        svg_clean = strip_chroma_paths(raw_cutout_svg, chroma_key)
 
-    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
-    # Render previews via resvg (server-side rasterization)
-    svg_with_bg_preview = _render_svg_to_b64_png(svg_with_bg, max_dim=600)
-    svg_clean_preview = _render_svg_to_b64_png(svg_clean, max_dim=600, background=None)
+        # Render previews via resvg (server-side rasterization)
+        svg_with_bg_preview = _render_svg_to_b64_png(svg_with_bg, max_dim=600)
+        svg_clean_preview = _render_svg_to_b64_png(svg_clean, max_dim=600, background=None)
 
-    # Resolve actual method that ran (for the response)
-    actual_method = method
-    if method == "auto":
-        from src.processor import _detect_method  # noqa: PLC2701
-        actual_method = _detect_method(src_img.convert("RGBA"))
+        # Resolve actual method that ran (for the response)
+        actual_method = method
+        if method == "auto":
+            from src.processor import _detect_method  # noqa: PLC2701
+            actual_method = _detect_method(src_img.convert("RGBA"))
 
-    return PipelineResponse(
-        cleaned_png_b64=_img_to_b64(cleaned, output_format),
-        svg_with_bg=svg_with_bg,
-        svg_clean=svg_clean,
-        svg_with_bg_preview_b64=svg_with_bg_preview,
-        svg_clean_preview_b64=svg_clean_preview,
-        method_used=actual_method,
-        elapsed_ms=elapsed_ms,
-        image_width=cleaned.width,
-        image_height=cleaned.height,
-    )
+        return PipelineResponse(
+            cleaned_png_b64=_img_to_b64(cleaned, output_format),
+            svg_with_bg=svg_with_bg,
+            svg_clean=svg_clean,
+            svg_with_bg_preview_b64=svg_with_bg_preview,
+            svg_clean_preview_b64=svg_clean_preview,
+            method_used=actual_method,
+            elapsed_ms=elapsed_ms,
+            image_width=cleaned.width,
+            image_height=cleaned.height,
+        )
+
+    return await run_in_threadpool(work)
 
 
 @app.get("/api/ktx/presets", response_model=KtxPresetsResponse)
@@ -611,7 +688,7 @@ async def ktx_single(
     validate_quality: bool = Form(False),
 ) -> KtxSingleResponse:
     if ktx_find_toktx() is None:
-        return KtxSingleResponse(success=False, summary=ktx_install_hint())
+        return KtxSingleResponse(success=False, summary=KTX_MISSING_MESSAGE)
 
     _, image = await _read_upload_image(file)
 
@@ -673,7 +750,7 @@ async def ktx_batch(
     max_workers: int = Form(4),
 ) -> KtxBatchResponse:
     if ktx_find_toktx() is None:
-        return KtxBatchResponse(success=False, summary=ktx_install_hint())
+        return KtxBatchResponse(success=False, summary=KTX_MISSING_MESSAGE)
 
     folder = Path(folder_path).expanduser().resolve()
     out = Path(output_path).expanduser().resolve()
@@ -743,17 +820,7 @@ async def batch_pipeline(
     upscale: float = Form(1.0),
     flatten_color: str = Form("#000000"),
 ) -> BatchPipelineResponse:
-    source = Path(input_path).expanduser().resolve()
-    out = Path(output_dir).expanduser().resolve()
-
-    if not source.exists():
-        return BatchPipelineResponse(success=False, summary=f"Input not found: {source}")
-
-    inputs = _collect_pipeline_inputs(source, recursive=recursive)
-    if not inputs:
-        return BatchPipelineResponse(success=False, summary=f"No supported images found in {source}")
-
-    out.mkdir(parents=True, exist_ok=True)
+    _require_model(model)
 
     bg_opts = BackgroundOptions(
         method=method,
@@ -787,82 +854,108 @@ async def batch_pipeline(
         upscale=upscale,
     )
 
-    files: list[BatchPipelineFile] = []
-    total_t0 = time.perf_counter()
-    svg_bg = _hex_to_rgb(flatten_color)
+    def work() -> BatchPipelineResponse:
+        source = Path(input_path).expanduser().resolve()
+        out = Path(output_dir).expanduser().resolve()
 
-    for src in inputs:
-        start = time.perf_counter()
-        try:
-            if no_bg_removal:
-                svg_path = out / f"{src.stem}.svg"
-                with Image.open(src) as img:
-                    png_to_svg(img, output_path=svg_path, options=vec_opts, background_color=svg_bg)
+        if not source.exists():
+            return BatchPipelineResponse(success=False, summary=f"Caminho não encontrado: {source}")
+
+        inputs = _collect_pipeline_inputs(source, recursive=recursive)
+        if not inputs:
+            return BatchPipelineResponse(success=False, summary=f"Nenhuma imagem suportada em {source}")
+
+        out.mkdir(parents=True, exist_ok=True)
+
+        files: list[BatchPipelineFile] = []
+        total_t0 = time.perf_counter()
+        svg_bg = _hex_to_rgb(flatten_color)
+        out_of_memory = False
+
+        for src in inputs:
+            start = time.perf_counter()
+            try:
+                if no_bg_removal:
+                    svg_path = out / f"{src.stem}.svg"
+                    with Image.open(src) as img:
+                        png_to_svg(img, output_path=svg_path, options=vec_opts, background_color=svg_bg)
+                    files.append(
+                        BatchPipelineFile(
+                            input_path=str(src),
+                            success=True,
+                            outputs=[str(svg_path)],
+                            method_used="no_bg_removal",
+                            duration_ms=int((time.perf_counter() - start) * 1000),
+                        )
+                    )
+                    continue
+
+                result = process_image(
+                    src,
+                    output_dir=out,
+                    bg_options=bg_opts,
+                    vec_options=vec_opts,
+                    make_svg=not no_svg,
+                    base_name=src.stem,
+                    svg_background=svg_bg,
+                )
+                outputs = [
+                    str(path)
+                    for path in (result.cleaned_path, result.svg_path, result.svg_clean_path)
+                    if path is not None
+                ]
                 files.append(
                     BatchPipelineFile(
                         input_path=str(src),
                         success=True,
-                        outputs=[str(svg_path)],
-                        method_used="no_bg_removal",
+                        outputs=outputs,
+                        method_used=result.method_used,
                         duration_ms=int((time.perf_counter() - start) * 1000),
                     )
                 )
-                continue
-
-            result = process_image(
-                src,
-                output_dir=out,
-                bg_options=bg_opts,
-                vec_options=vec_opts,
-                make_svg=not no_svg,
-                base_name=src.stem,
-                svg_background=svg_bg,
-            )
-            outputs = [
-                str(path)
-                for path in (result.cleaned_path, result.svg_path, result.svg_clean_path)
-                if path is not None
-            ]
-            files.append(
-                BatchPipelineFile(
-                    input_path=str(src),
-                    success=True,
-                    outputs=outputs,
-                    method_used=result.method_used,
-                    duration_ms=int((time.perf_counter() - start) * 1000),
+            except Exception as exc:
+                out_of_memory = is_out_of_memory(exc)
+                error = str(exc)
+                if out_of_memory and not isinstance(exc, ModelOutOfMemory):
+                    error = memory_message()
+                files.append(
+                    BatchPipelineFile(
+                        input_path=str(src),
+                        success=False,
+                        duration_ms=int((time.perf_counter() - start) * 1000),
+                        error=error,
+                    )
                 )
-            )
-        except Exception as exc:
-            files.append(
-                BatchPipelineFile(
-                    input_path=str(src),
-                    success=False,
-                    duration_ms=int((time.perf_counter() - start) * 1000),
-                    error=str(exc),
-                )
-            )
+                if out_of_memory:
+                    release_sessions()
+                    break
 
-    failures = [item for item in files if not item.success]
-    success_count = len(files) - len(failures)
-    total_ms = int((time.perf_counter() - total_t0) * 1000)
-    lines = [
-        f"Processed {success_count}/{len(files)} image(s) in {total_ms / 1000:.2f}s",
-        f"Output: {out}",
-    ]
-    if failures:
-        lines.append("")
-        lines.append("Failures:")
-        lines.extend(f"- {Path(item.input_path).name}: {item.error}" for item in failures)
+        failures = [item for item in files if not item.success]
+        success_count = len(files) - len(failures)
+        skipped = len(inputs) - len(files)
+        total_ms = int((time.perf_counter() - total_t0) * 1000)
+        lines = [
+            f"Processadas {success_count}/{len(inputs)} imagem(ns) em {total_ms / 1000:.2f}s",
+            f"Saída: {out}",
+        ]
+        if out_of_memory and skipped:
+            lines.append(f"Lote interrompido por falta de memória: {skipped} imagem(ns) não processada(s).")
+        if failures:
+            lines.append("")
+            lines.append("Falhas:")
+            lines.extend(f"- {Path(item.input_path).name}: {item.error}" for item in failures)
 
-    return BatchPipelineResponse(
-        success=not failures,
-        summary="\n".join(lines),
-        total=len(files),
-        success_count=success_count,
-        failure_count=len(failures),
-        output_dir=str(out),
-        files=files,
-    )
+        return BatchPipelineResponse(
+            success=not failures,
+            summary="\n".join(lines),
+            total=len(inputs),
+            success_count=success_count,
+            failure_count=len(inputs) - success_count,
+            output_dir=str(out),
+            files=files,
+        )
+
+    return await run_in_threadpool(work)
 
 
 @app.post("/api/ktx/orientation", response_model=KtxPatchResponse)
@@ -873,7 +966,7 @@ async def ktx_orientation(
 ) -> KtxPatchResponse:
     raw = await file.read()
     if not raw:
-        raise HTTPException(status_code=400, detail="Empty file")
+        raise HTTPException(status_code=400, detail="Arquivo vazio.")
 
     stem = Path(output_name or file.filename or "texture").stem or "texture"
     filename = _safe_download_name(stem, "texture", ".ktx")
@@ -916,10 +1009,7 @@ async def portfolio_ktx(
     if not _has_python_module("alktx2"):
         return PortfolioKtxResponse(
             success=False,
-            summary=(
-                "alktx2 is not installed in this venv. "
-                "Install with: python -m pip install alktx2"
-            ),
+            summary="O conversor do Portfolio KTX não está instalado. Rode o sharpz-setup.cmd para instalar.",
         )
 
     raw, image = await _read_upload_image(file)

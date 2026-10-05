@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react"
 
 import { EmptyState, Metric, Panel, cardEnter } from "@/components/dashboard/primitives"
 import { Button } from "@/components/ui/button"
+import { responseError } from "@/lib/dashboard-utils"
 
 type PackageCategory = "essencial" | "transcricao" | "ktx" | "opcional"
 
@@ -92,7 +93,7 @@ export function PackagesTool() {
             void (async () => {
                 try {
                     const response = await fetch(`/api/packages/${id}/install`, { method: "POST" })
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+                    if (!response.ok) throw await responseError(response)
                     const { job_id } = (await response.json()) as { job_id: string }
 
                     const source = new EventSource(`/api/packages/jobs/${job_id}/stream`)
@@ -164,7 +165,7 @@ export function PackagesTool() {
         return (
             <div className="space-y-4">
                 <motion.div {...cardEnter}>
-                    <Panel title="Baixar pacotes" subtitle="Gerencie as dependencias do backend Sharpz." icon={HardDriveDownload}>
+                    <Panel title="Baixar pacotes" subtitle="Instale o que o Sharpz precisa para funcionar." icon={HardDriveDownload}>
                         <EmptyState text="API offline — rode o sharpz-setup.cmd" />
                     </Panel>
                 </motion.div>
@@ -184,7 +185,7 @@ export function PackagesTool() {
             ) : null}
 
             <motion.div {...cardEnter}>
-                <Panel title="Baixar pacotes" subtitle="Gerencie as dependencias do backend Sharpz sem sair do dashboard." icon={HardDriveDownload}>
+                <Panel title="Baixar pacotes" subtitle="Instale o que o Sharpz precisa sem sair do painel." icon={HardDriveDownload}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 md:grid-cols-3">
                             <Metric label="Total" value={String(total)} />

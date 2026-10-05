@@ -66,6 +66,13 @@ def as_json(raw):
     return json.loads(raw.decode("utf-8"))
 
 
+def http_detail(exc):
+    try:
+        return as_json(exc.read()).get("detail") or ""
+    except Exception:
+        return ""
+
+
 def check_health(base, png):
     status, raw = http_get(base + "/api/health")
     assert status == 200, "status %s" % status
@@ -85,7 +92,12 @@ def check_models(base, png):
     status, raw = http_get(base + "/api/models")
     assert status == 200, "status %s" % status
     data = as_json(raw)
-    assert data.get("models"), "'models' ausente ou vazio"
+    models = data.get("models")
+    assert models, "'models' ausente ou vazio"
+    default = next((m for m in models if m.get("is_default")), None)
+    assert default, "nenhum modelo marcado como padrao"
+    assert not default.get("heavy"), "modelo padrao e pesado: %s" % default.get("key")
+    print("       padrao: %s" % default.get("label"))
 
 
 def check_ktx_presets(base, png):
@@ -191,7 +203,7 @@ def run():
         except (urllib.error.URLError, ConnectionError) as exc:
             reason = getattr(exc, "reason", exc)
             if isinstance(exc, urllib.error.HTTPError):
-                print("[FAIL] %s: HTTP %s" % (name, exc.code))
+                print("[FAIL] %s: HTTP %s %s" % (name, exc.code, http_detail(exc)))
             else:
                 print("[FAIL] %s: backend offline em %s? (%s)" % (name, base, reason))
         except Exception as exc:

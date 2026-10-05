@@ -85,7 +85,7 @@ export function KtxSingleTool() {
             ) : null}
 
             <motion.div {...cardEnter} className="grid gap-4 xl:grid-cols-[minmax(290px,0.72fr)_minmax(0,1.28fr)]">
-                <Panel title="Fonte" subtitle="O mesmo upload pode alimentar qualquer modulo." icon={ImagePlus}>
+                <Panel title="Fonte" subtitle="Aceita PNG, JPG, WEBP, BMP e TIFF." icon={ImagePlus}>
                     <Dropzone file={file} previewUrl={previewUrl} onChange={setFile} />
                 </Panel>
 
@@ -95,11 +95,11 @@ export function KtxSingleTool() {
                         <div className="grid gap-3 md:grid-cols-3">
                             <CheckboxRow checked={ktxSingle.autoAlign} onChange={(autoAlign) => setKtxSingle((current) => ({ ...current, autoAlign }))} label="Auto-align" helper="Pad para multiplo de 4." />
                             <CheckboxRow checked={ktxSingle.autoPreset} onChange={(autoPreset) => setKtxSingle((current) => ({ ...current, autoPreset }))} label="Auto-preset" helper="Alpha usa ultra_rgba." />
-                            <CheckboxRow checked={ktxSingle.validateQuality} onChange={(validateQuality) => setKtxSingle((current) => ({ ...current, validateQuality }))} label="Validar PSNR" helper="Requer ktx + skimage." />
+                            <CheckboxRow checked={ktxSingle.validateQuality} onChange={(validateQuality) => setKtxSingle((current) => ({ ...current, validateQuality }))} label="Validar PSNR" helper="Compara com o original (mais lento)." />
                         </div>
                         {toktxFound === false ? (
                             <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
-                                toktx nao encontrado no PATH. Instale KTX-Software para habilitar conversao.
+                                KTX-Software não encontrado. Instale em Baixar pacotes para habilitar a conversão.
                             </div>
                         ) : null}
                         <Button onClick={runKtxSingle} disabled={busy} size="lg" className="w-full">

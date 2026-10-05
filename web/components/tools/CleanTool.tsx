@@ -15,10 +15,11 @@ import {
     cardEnter,
 } from "@/components/dashboard/primitives"
 import { useDashboard } from "@/components/dashboard/DashboardProvider"
+import { ModelField } from "@/components/dashboard/ModelField"
 import { Dropzone } from "@/components/dropzone"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { CleanResult, DEFAULT_MODEL, Method, methodOptions } from "@/lib/dashboard-types"
+import { CleanResult, Method, methodOptions } from "@/lib/dashboard-types"
 import { appendFields, formatBytes, imgData, postForm } from "@/lib/dashboard-utils"
 
 type OutputFormat = "png" | "webp"
@@ -29,7 +30,7 @@ const outputFormatOptions: Array<{ value: OutputFormat; label: string }> = [
 ]
 
 export function CleanTool() {
-    const { modelOptions, defaultModel } = useDashboard()
+    const { defaultModel } = useDashboard()
 
     const [file, setFile] = useState<File | null>(null)
     const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -39,7 +40,7 @@ export function CleanTool() {
 
     const [clean, setClean] = useState({
         method: "auto" as Method,
-        model: DEFAULT_MODEL,
+        model: null as string | null,
         alphaMatting: true,
         fgThreshold: 240,
         bgThreshold: 10,
@@ -68,10 +69,6 @@ export function CleanTool() {
         return () => URL.revokeObjectURL(url)
     }, [file])
 
-    useEffect(() => {
-        setClean((current) => ({ ...current, model: current.model || defaultModel }))
-    }, [defaultModel])
-
     async function runClean() {
         if (!file) {
             setError("Carregue uma imagem antes de executar este modulo.")
@@ -84,7 +81,7 @@ export function CleanTool() {
             fd.append("file", file)
             appendFields(fd, {
                 method: clean.method,
-                model: clean.model,
+                model: clean.model ?? defaultModel,
                 alpha_matting: clean.alphaMatting,
                 alpha_matting_foreground_threshold: clean.fgThreshold,
                 alpha_matting_background_threshold: clean.bgThreshold,
@@ -130,7 +127,7 @@ export function CleanTool() {
                     <div className="grid gap-4">
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             <SelectField label="Metodo" value={clean.method} options={methodOptions} onChange={(method) => setClean((current) => ({ ...current, method }))} />
-                            <SelectField label="Modelo AI" value={clean.model} options={modelOptions} onChange={(model) => setClean((current) => ({ ...current, model }))} />
+                            <ModelField value={clean.model ?? defaultModel} onChange={(model) => setClean((current) => ({ ...current, model }))} />
                             <ColorField label="Cor de fundo" value={clean.bgColor} onChange={(bgColor) => setClean((current) => ({ ...current, bgColor }))} />
                         </div>
                         <div className="grid gap-3 md:grid-cols-2">
@@ -152,7 +149,7 @@ export function CleanTool() {
                             <Slider label="Contraste" value={clean.contrast} min={0.5} max={2} step={0.05} onChange={(contrast) => setClean((current) => ({ ...current, contrast }))} />
                             <Slider label="Brilho" value={clean.brightness} min={0.5} max={2} step={0.05} onChange={(brightness) => setClean((current) => ({ ...current, brightness }))} />
                             <CheckboxRow checked={clean.lumaUnpremultiply} onChange={(lumaUnpremultiply) => setClean((current) => ({ ...current, lumaUnpremultiply }))} label="Unmult" />
-                            <CheckboxRow checked={clean.alphaMatting} onChange={(alphaMatting) => setClean((current) => ({ ...current, alphaMatting }))} label="Alpha matting" />
+                            <CheckboxRow checked={clean.alphaMatting} onChange={(alphaMatting) => setClean((current) => ({ ...current, alphaMatting }))} label="Alpha matting" helper="Refina bordas na IA (mais lento)." />
                         </div>
                         <div className="grid gap-3 md:grid-cols-2">
                             <CheckboxRow checked={clean.edgeSmooth} onChange={(edgeSmooth) => setClean((current) => ({ ...current, edgeSmooth }))} label="Suavizar borda" />

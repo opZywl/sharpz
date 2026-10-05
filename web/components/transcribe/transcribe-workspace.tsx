@@ -925,7 +925,7 @@ export function TranscribeWorkspace() {
                                 placeholder="https://www.youtube.com/watch?v=..."
                             />
                             <span className="app-faint text-xs">
-                                Se preenchida, a URL tem prioridade sobre o arquivo. Requer yt-dlp no backend.
+                                Se preenchida, a URL tem prioridade sobre o arquivo.
                             </span>
                         </div>
                         <div className="grid gap-2">
@@ -949,19 +949,19 @@ export function TranscribeWorkspace() {
                                 <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
                                     <span className="app-faint text-xs font-semibold uppercase tracking-[0.16em]">ffmpeg</span>
                                     <span className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]" data-tone={capabilities.ffmpeg ? "good" : "bad"}>
-                                        {capabilities.ffmpeg ? "ok" : "missing"}
+                                        {capabilities.ffmpeg ? "ok" : "faltando"}
                                     </span>
                                 </div>
                                 <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
-                                    <span className="app-faint text-xs font-semibold uppercase tracking-[0.16em]">whisperx</span>
+                                    <span className="app-faint text-xs font-semibold uppercase tracking-[0.16em]">Tempo por palavra</span>
                                     <span className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]" data-tone={capabilities.whisperx ? "good" : "bad"}>
-                                        {capabilities.whisperx ? "ok" : "missing"}
+                                        {capabilities.whisperx ? "ok" : "faltando"}
                                     </span>
                                 </div>
                                 <div className="status-card flex items-center justify-between rounded-xl px-3 py-2">
                                     <span className="app-faint text-xs font-semibold uppercase tracking-[0.16em]">diarizacao</span>
                                     <span className="status-pill px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]" data-tone={capabilities.diarization ? "good" : "bad"}>
-                                        {capabilities.diarization ? "ok" : "missing"}
+                                        {capabilities.diarization ? "ok" : "faltando"}
                                     </span>
                                 </div>
                             </div>
@@ -977,7 +977,7 @@ export function TranscribeWorkspace() {
                         </div>
 
                         <div className="grid gap-3 md:grid-cols-2">
-                            <CheckboxRow checked={diarize} onChange={setDiarize} label="Diarizacao (identificar locutores)" helper="Requer whisperx + token HuggingFace." />
+                            <CheckboxRow checked={diarize} onChange={setDiarize} label="Diarizacao (identificar locutores)" helper="Requer token HuggingFace (campo abaixo)." />
                             <CheckboxRow checked={wordTimestamps} onChange={setWordTimestamps} label="Timestamps por palavra" helper="Alinhamento fino por palavra." />
                             <CheckboxRow checked={vad} onChange={setVad} label="Filtrar silencio (VAD)" helper="Remove trechos sem fala." />
                             <CheckboxRow checked={translate} onChange={setTranslate} label="Traduzir para ingles" helper="Saida em ingles." />

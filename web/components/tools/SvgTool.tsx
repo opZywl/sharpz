@@ -104,11 +104,11 @@ export function SvgTool() {
             ) : null}
 
             <motion.div {...cardEnter} className="grid gap-4 xl:grid-cols-[minmax(290px,0.72fr)_minmax(0,1.28fr)]">
-                <Panel title="Fonte" subtitle="O mesmo upload pode alimentar qualquer modulo." icon={ImagePlus}>
+                <Panel title="Fonte" subtitle="Aceita PNG, JPG, WEBP, BMP e TIFF." icon={ImagePlus}>
                     <Dropzone file={file} previewUrl={previewUrl} onChange={setFile} />
                 </Panel>
 
-                <Panel title="Controles do vetor" subtitle="Parametros completos do vtracer e SVG transparente." icon={Layers}>
+                <Panel title="Controles do vetor" subtitle="Parâmetros completos da vetorização e SVG transparente." icon={Layers}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             <SelectField label="Cor" value={svg.colorMode} options={colorModeOptions} onChange={(colorMode) => setSvg((current) => ({ ...current, colorMode }))} />

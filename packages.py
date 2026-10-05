@@ -142,12 +142,12 @@ def _check_node_modules() -> tuple[bool, str]:
     nm = WEB_DIR / "node_modules"
     if nm.exists() and (nm / "next").exists():
         return True, "dependencias web instaladas"
-    return False, "rode npm install"
+    return False, "nao instalado"
 
 
 def _check_whisper_engine() -> tuple[bool, str]:
     if not WHISPER_PY.exists():
-        return False, "whisper-venv ausente"
+        return False, "motor nao instalado"
     site = WHISPER_VENV / "Lib" / "site-packages"
     has_fw = (site / "faster_whisper").exists()
     has_wx = (site / "whisperx").exists() or any(site.glob("whisperx*"))
@@ -374,7 +374,7 @@ PACKAGES: list[Package] = [
     ),
     Package(
         id="node_modules", name="Dependencias do painel (npm)",
-        description="Bibliotecas do front-end (Next.js/React). Instala em web/node_modules.",
+        description="Bibliotecas que o painel do Sharpz precisa para abrir no navegador.",
         category="essencial", optional=False, size_hint="~300 MB",
         checker=_check_node_modules, installer=_install_node_modules,
         manual_hint="Requer Node.js instalado.",
@@ -389,7 +389,7 @@ PACKAGES: list[Package] = [
     ),
     Package(
         id="whisper_engine", name="Motor de transcricao (faster-whisper + whisperX)",
-        description="Bibliotecas de IA (CTranslate2 + torch CPU + whisperX) no whisper-venv. Habilita transcricao, tempo por palavra e diarizacao.",
+        description="Bibliotecas de IA da transcricao (rodam no processador). Habilita transcricao, tempo por palavra e diarizacao.",
         category="transcricao", optional=False, size_hint="~2.5 GB",
         checker=_check_whisper_engine, installer=_install_whisper_engine,
         manual_hint="Requer uv instalado.",
@@ -405,7 +405,7 @@ PACKAGES: list[Package] = [
     ),
     Package(
         id="toktx", name="KTX-Software (toktx)",
-        description="CLI oficial da Khronos pra gerar texturas KTX2. Habilita PNG -> KTX e Batch KTX.",
+        description="Ferramenta oficial da Khronos pra gerar texturas KTX2. Habilita PNG -> KTX e Batch KTX.",
         category="ktx", optional=False, size_hint="~40 MB",
         checker=_check_toktx, installer=_install_toktx,
         manual_hint="Instalador oficial pede confirmacao de administrador (UAC).",

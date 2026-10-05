@@ -76,7 +76,7 @@ export function PortfolioKtxTool() {
             ) : null}
 
             <motion.div {...cardEnter} className="grid gap-4 xl:grid-cols-[minmax(290px,0.72fr)_minmax(0,1.28fr)]">
-                <Panel title="Fonte" subtitle="O mesmo upload pode alimentar qualquer modulo." icon={ImagePlus}>
+                <Panel title="Fonte" subtitle="Aceita PNG, JPG, WEBP, BMP e TIFF." icon={ImagePlus}>
                     <Dropzone file={file} previewUrl={previewUrl} onChange={setFile} />
                 </Panel>
 
@@ -88,7 +88,7 @@ export function PortfolioKtxTool() {
                         </div>
                         {capabilities?.alktx2_found === false ? (
                             <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
-                                alktx2 nao esta instalado neste venv. Rode: python -m pip install -r requirements.txt
+                                O conversor do Portfolio KTX não está instalado. Rode o sharpz-setup.cmd para instalar.
                             </div>
                         ) : null}
                         <div className="grid gap-3 md:grid-cols-3">

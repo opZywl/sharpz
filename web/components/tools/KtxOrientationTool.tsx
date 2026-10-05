@@ -63,9 +63,9 @@ export function KtxOrientationTool() {
 
             <motion.div {...cardEnter} className="grid gap-4 xl:grid-cols-[minmax(290px,0.72fr)_minmax(0,1.28fr)]">
                 <Panel title="Arquivo KTX" subtitle="Aceita .ktx ou .ktx2 e devolve o arquivo patchado." icon={Archive}>
-                    <FileField file={ktxFile} onChange={setKtxFile} accept=".ktx,.ktx2,application/octet-stream" label="Escolher KTX" helper="KTX2 gerado por alktx2/toktx" />
+                    <FileField file={ktxFile} onChange={setKtxFile} accept=".ktx,.ktx2,application/octet-stream" label="Escolher KTX" helper="Textura .ktx ou .ktx2" />
                 </Panel>
-                <Panel title="Orientation patch" subtitle="Garante KTXorientation=rd para compatibilidade no three.js." icon={ShieldCheck}>
+                <Panel title="Orientation patch" subtitle="Garante a orientação correta da textura na cena 3D." icon={ShieldCheck}>
                     <div className="grid gap-4">
                         <div className="grid gap-3 xl:grid-cols-2">
                             <TextField label="Nome output" value={ktxPatch.outputName} onChange={(outputName) => setKtxPatch((current) => ({ ...current, outputName }))} placeholder="texture.ktx" />
