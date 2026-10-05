@@ -1,40 +1,41 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 chcp 65001 >nul
 title Sharpz
 set "SCRIPTS=%~dp0scripts"
-set "ACAO=%~1"
-if not "%ACAO%"=="" goto :executar
+call "%SCRIPTS%\languages\load.cmd"
+set "ACTION=%~1"
+if not "%ACTION%"=="" goto :run
 
 echo.
 echo   Sharpz
 echo   ------------------------------------------
-echo   1  Instalar tudo e abrir  (primeira vez)
-echo   2  Abrir o painel         (uso do dia a dia)
-echo   3  Modo producao          (build otimizado)
-echo   4  Testar                 (smoke test)
+echo   !T_MENU_1!
+echo   !T_MENU_2!
+echo   !T_MENU_3!
+echo   !T_MENU_4!
 echo   ------------------------------------------
 echo.
-set /p "ACAO=Escolha uma opcao [1-4]: "
+set /p "ACTION=!T_MENU_PROMPT! "
 
-:executar
-if /i "%ACAO%"=="1" set "ACAO=instalar"
-if /i "%ACAO%"=="2" set "ACAO=abrir"
-if /i "%ACAO%"=="3" set "ACAO=producao"
-if /i "%ACAO%"=="4" set "ACAO=testar"
-if /i "%ACAO%"=="install" set "ACAO=instalar"
-if /i "%ACAO%"=="open" set "ACAO=abrir"
-if /i "%ACAO%"=="prod" set "ACAO=producao"
-if /i "%ACAO%"=="test" set "ACAO=testar"
+:run
+if /i "%ACTION%"=="1" set "ACTION=install"
+if /i "%ACTION%"=="2" set "ACTION=open"
+if /i "%ACTION%"=="3" set "ACTION=prod"
+if /i "%ACTION%"=="4" set "ACTION=test"
+if /i "%ACTION%"=="instalar" set "ACTION=install"
+if /i "%ACTION%"=="abrir" set "ACTION=open"
+if /i "%ACTION%"=="producao" set "ACTION=prod"
+if /i "%ACTION%"=="testar" set "ACTION=test"
 
-if /i "%ACAO%"=="instalar" call "%SCRIPTS%\sharpz-setup.cmd" & exit /b
-if /i "%ACAO%"=="abrir" call "%SCRIPTS%\sharpz-dev.cmd" & exit /b
-if /i "%ACAO%"=="producao" call "%SCRIPTS%\sharpz-prod.cmd" & exit /b
-if /i "%ACAO%"=="testar" call "%SCRIPTS%\sharpz-smoke.cmd" & exit /b
+if /i "%ACTION%"=="install" call "%SCRIPTS%\sharpz-setup.cmd" & exit /b
+if /i "%ACTION%"=="open" call "%SCRIPTS%\sharpz-dev.cmd" & exit /b
+if /i "%ACTION%"=="prod" call "%SCRIPTS%\sharpz-prod.cmd" & exit /b
+if /i "%ACTION%"=="test" call "%SCRIPTS%\sharpz-smoke.cmd" & exit /b
 
 echo.
-echo   Opcao invalida: %ACAO%
-echo   Use 1-4 ou: sharpz.cmd instalar ^| abrir ^| producao ^| testar
+echo   !T_MENU_INVALID! !ACTION!
+echo   !T_MENU_USAGE!
 echo.
 pause
 exit /b 1
