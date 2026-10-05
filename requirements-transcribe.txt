@@ -1,12 +1,8 @@
-# Dependencias do motor de transcricao (whisper-venv, Python 3.12)
-# Instalado de forma isolada do backend principal (requirements.txt).
-# O launcher transcribe.cmd cuida da instalacao na ordem correta.
+# Transcription engine (whisper-venv, Python 3.12), installed apart from the main
+# backend (requirements.txt) by sharpz.cmd, option 1 (Install).
 #
-# IMPORTANTE: torch/torchaudio vem do indice CPU oficial do PyTorch:
-#   --index-url https://download.pytorch.org/whl/cpu
-# Exemplo manual:
-#   uv pip install -p whisper-venv\Scripts\python.exe torch==2.8.0 torchaudio==2.8.0 \
-#       --index-url https://download.pytorch.org/whl/cpu
+# torch and torchaudio come from the official PyTorch CPU index:
+#   uv pip install -p whisper-venv\Scripts\python.exe torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu
 
 faster-whisper
 ctranslate2
@@ -16,6 +12,6 @@ whisperx
 pyannote.audio
 imageio-ffmpeg
 
-# yt-dlp: usado pelo BACKEND (venv principal, Python 3.13), nao pelo motor.
-# Baixa o melhor audio de URLs (YouTube etc) antes de transcrever.
+# yt-dlp runs in the main backend venv (Python 3.13), not in the engine:
+# it downloads the best audio from URLs (YouTube and others) before transcribing.
 yt-dlp
