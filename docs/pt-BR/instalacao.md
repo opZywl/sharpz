@@ -1,4 +1,6 @@
-[← Voltar ao início](../README.md)
+[![EN](https://img.shields.io/badge/lang-EN-blue)](../en/installation.md) [![PT-BR](https://img.shields.io/badge/lang-PT--BR-green)](instalacao.md)
+
+[← Voltar ao início](../../README.pt-BR.md)
 
 # Instalação e uso
 
@@ -31,7 +33,22 @@ Também dá para pular o menu e passar a opção direto:
 .\sharpz.cmd testar
 ```
 
-Os scripts de cada opção ficam em [`scripts/`](../scripts). Eles só abrem o navegador depois que o servidor e o painel respondem, e avisam em vermelho o que faltar.
+Os nomes em inglês (`install`, `open`, `prod` e `test`) também funcionam.
+
+Os scripts de cada opção ficam em [`scripts/`](../../scripts). Eles só abrem o navegador depois que o servidor e o painel respondem, e avisam em vermelho o que faltar.
+
+## Idioma
+
+O painel tem os botões **EN** e **PT-BR** no cabeçalho para trocar o idioma da interface.
+
+O menu e as mensagens do `sharpz.cmd` seguem o idioma de exibição do Windows: português quando o Windows está em português, inglês nos outros casos. Para forçar um deles, defina `SHARPZ_LANG` como `pt-BR` ou `en` antes de rodar (por exemplo `set SHARPZ_LANG=pt-BR`). As opções são as mesmas nos dois idiomas, e as ações pela linha de comando funcionam nos dois (`instalar`, `abrir`, `producao`, `testar` ou `install`, `open`, `prod`, `test`):
+
+| Português | English |
+| --- | --- |
+| 1 · Instalar tudo e abrir (primeira vez) | 1 · Install everything and open (first time) |
+| 2 · Abrir o painel (uso do dia a dia) | 2 · Open the dashboard (everyday use) |
+| 3 · Modo produção (build otimizado) | 3 · Production mode (optimized build) |
+| 4 · Testar (smoke test) | 4 · Test (smoke test) |
 
 ## Endereços
 

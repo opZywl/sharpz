@@ -1,0 +1,21 @@
+name: Suggest an idea
+description: A new tool or an improvement. / Uma ferramenta nova ou uma melhoria.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve? / Qual problema isso resolve?
+      description: Tell us what you are trying to do and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How do you picture the solution? / Como você imagina a solução?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered / Alternativas que você considerou

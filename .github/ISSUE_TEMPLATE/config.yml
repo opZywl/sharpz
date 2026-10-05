@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/opZywl/sharpz/security/advisories/new
+    about: Security flaws are handled privately. Do not open a public issue. / Falhas de segurança são tratadas em privado.
+  - name: Documentation
+    url: https://github.com/opZywl/sharpz/blob/main/README.md#documentation
+    about: Installation, tools, troubleshooting and development.
+  - name: Documentação em português
+    url: https://github.com/opZywl/sharpz/blob/main/README.pt-BR.md#documenta%C3%A7%C3%A3o
+    about: Instalação, ferramentas, solução de problemas e desenvolvimento.

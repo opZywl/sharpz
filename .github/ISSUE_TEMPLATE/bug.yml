@@ -1,0 +1,62 @@
+name: Report a bug
+description: Something does not work as it should. / Algo não funciona como deveria.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The more details, the faster it gets fixed.
+        You can write in English or Portuguese. / Pode escrever em português.
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Where did it happen? / Onde aconteceu?
+      options:
+        - Remove background
+        - Remove background + SVG
+        - Whole folder
+        - Vectorize (SVG)
+        - Image to KTX
+        - Folder to KTX
+        - Fix flipped KTX
+        - Portfolio KTX
+        - Transcription
+        - Image to PDF
+        - PDF editor
+        - Download packages
+        - Install or launcher (sharpz.cmd)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened? / O que aconteceu?
+      description: Describe the problem and the error message, if one shows up.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce / Como reproduzir
+      placeholder: |
+        1. Opened the tool ...
+        2. Uploaded the image ...
+        3. Clicked ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect? / O que você esperava?
+  - type: input
+    id: system
+    attributes:
+      label: System / Sistema
+      placeholder: Windows 11, 16 GB RAM
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: If you can, paste the end of fastapi.err.log and next.err.log (both in the project root).
+      render: shell

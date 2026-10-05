@@ -1,4 +1,6 @@
-[← Voltar ao início](../README.md)
+[![EN](https://img.shields.io/badge/lang-EN-blue)](../en/ktx-textures.md) [![PT-BR](https://img.shields.io/badge/lang-PT--BR-green)](texturas-ktx.md)
+
+[← Voltar ao início](../../README.pt-BR.md)
 
 # Texturas KTX
 

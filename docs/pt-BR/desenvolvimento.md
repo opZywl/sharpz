@@ -1,4 +1,6 @@
-[← Voltar ao início](../README.md)
+[![EN](https://img.shields.io/badge/lang-EN-blue)](../en/development.md) [![PT-BR](https://img.shields.io/badge/lang-PT--BR-green)](desenvolvimento.md)
+
+[← Voltar ao início](../../README.pt-BR.md)
 
 # Desenvolvimento
 
@@ -74,14 +76,17 @@ Erros voltam em JSON com o campo `detail` (texto pronto para mostrar ao usuário
 ## Testes
 
 ```powershell
-# teste rápido contra o servidor no ar
-.\sharpz.cmd testar
-
-# testes do motor de transcrição
-.\venv\Scripts\python.exe -m unittest tests.test_transcribe_backend
+# todos os testes (API sem carregar modelos de IA, launchers e motor de transcrição)
+.\venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
 
 # Imagem para PDF, sem servidor
 .\venv\Scripts\python.exe -m imgpdf.smoke_test
+
+# lint (só erros reais: sintaxe e nomes indefinidos)
+uvx ruff check .
+
+# teste rápido contra o servidor no ar
+.\sharpz.cmd testar
 
 # checagem de tipos e build do painel (com o painel parado)
 cd web
@@ -89,13 +94,27 @@ npx tsc --noEmit -p .
 npm run build
 ```
 
+## Integração contínua
+
+Todo push na `main` e todo pull request rodam o [CI](../../.github/workflows/ci.yml). Os nomes dos jobs ficam em inglês, do jeito que aparecem na aba Actions e nos pull requests:
+
+| Job | Onde roda | O que faz |
+| --- | --- | --- |
+| Lint (Python) | Linux | ruff com erros reais e compilação de todo o Python. |
+| Backend tests (Windows) | Windows | Todos os testes e o smoke do Imagem para PDF. |
+| Dashboard (types and build) | Linux | Checagem de tipos e build de produção do painel. |
+| End-to-end (launcher, server and dashboard) | Windows | Cria o `venv` como o instalador, baixa o modelo padrão, sobe servidor e painel, roda `sharpz.cmd test` e confere o proxy da API. |
+
+As dependências Python são instaladas com o `constraints.txt`, que trava as versões testadas. O Dependabot propõe atualizações toda semana, e o CI valida cada uma antes do merge.
+
 ## Convenções
 
-- Textos da interface em português do Brasil, sem nomes de bibliotecas ou ferramentas internas.
+- Textos da interface em inglês e em português do Brasil, sem nomes de bibliotecas ou ferramentas internas.
+- Documentação nos dois idiomas: `README.md` e `docs/en/` em inglês, `README.pt-BR.md` e `docs/pt-BR/` em português.
 - Sem comentários no código.
 - Commits no formato `tipo: (escopo) descrição`, por exemplo `fix: (painel) ...`.
 - Saídas, modelos, ambientes, logs e anotações internas ficam fora do Git (veja o `.gitignore`).
 
 ---
 
-[← Solução de problemas](solucao-de-problemas.md) · [Voltar ao início](../README.md)
+[← Solução de problemas](solucao-de-problemas.md) · [Voltar ao início](../../README.pt-BR.md)

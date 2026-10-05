@@ -1,4 +1,6 @@
-[← Voltar ao início](../README.md)
+[![EN](https://img.shields.io/badge/lang-EN-blue)](../en/troubleshooting.md) [![PT-BR](https://img.shields.io/badge/lang-PT--BR-green)](solucao-de-problemas.md)
+
+[← Voltar ao início](../../README.pt-BR.md)
 
 # Solução de problemas
 
@@ -44,7 +46,7 @@ O modelo de locutores é restrito. É preciso:
 
 1. criar um token em <https://huggingface.co/settings/tokens>;
 2. aceitar os termos em <https://huggingface.co/pyannote/speaker-diarization-community-1>;
-3. informar o token no campo **Token HuggingFace** da tela de Transcrição, ou salvar `HF_TOKEN=...` no arquivo `.env` da raiz.
+3. informar o token no campo **Token da Hugging Face** da tela de Transcrição, ou salvar `HF_TOKEN=...` no arquivo `.env` da raiz.
 
 ## O resumo por IA não responde
 

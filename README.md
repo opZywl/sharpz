@@ -4,46 +4,55 @@
 
 # Sharpz
 
-**IA no seu PC, sem nuvem e sem marca d'água.**
+[![EN](https://img.shields.io/badge/lang-EN-blue)](README.md) [![PT-BR](https://img.shields.io/badge/lang-PT--BR-green)](README.pt-BR.md)
 
-Tire o fundo de imagens, transforme em vetor, gere texturas 3D, transcreva vídeos e monte PDFs editáveis num painel só.
+**A local media toolkit for image processing, vectorization, KTX textures, transcription and editable PDFs**
 
 </div>
 
-## O que dá para fazer
+## Features
 
-| Módulo | Para quê |
+Sharpz brings multiple media-processing tools into a single local interface.
+
+- **Background Removal** — Remove image backgrounds using local AI models.
+- **SVG Vectorization** — Convert raster images into scalable SVG files.
+- **Batch Processing** — Process multiple images or entire folders at once.
+- **KTX / KTX2 Textures** — Convert, optimize and fix textures for 3D projects.
+- **Transcription** — Transcribe audio, video and YouTube content locally.
+- **Subtitles** — Export transcriptions as TXT, SRT, VTT, JSON or LRC.
+- **Image to PDF** — Convert images into searchable and editable PDFs.
+- **PDF Editor** — Edit PDF text directly through the Sharpz interface.
+- **Package Manager** — Detect and install optional tools and models required by each module.
+
+## Getting started
+
+1. Double-click **`sharpz.cmd`** in the project root.
+2. The first time, choose **1 · Install everything and open**. After that, use **2 · Open the dashboard**.
+3. The dashboard opens in Chrome on its own, at <http://localhost:5174>.
+
+The dashboard has **EN** and **PT-BR** buttons in the header to switch languages, and the `sharpz.cmd` menu follows the Windows display language.
+
+The full walkthrough is in [Installation and usage](docs/en/installation.md).
+
+## Documentation
+
+| Page | Topic |
 | --- | --- |
-| **Imagem e fundo** | Tirar o fundo de fotos e artes (uma imagem ou a pasta toda) e baixar em PNG, WEBP ou SVG. |
-| **Vetor (SVG)** | Transformar uma imagem em SVG, que amplia sem perder qualidade. Ideal para logos e ícones. |
-| **Texturas KTX** | Gerar texturas KTX2 para cenas 3D, consertar texturas viradas e montar o formato do portfólio (960 × 540). |
-| **Transcrição** | Transformar áudio, vídeo ou link do YouTube em texto e legenda, com tempo por palavra e separação de quem fala. |
-| **Documento (PDF)** | Converter a foto de um documento em PDF com texto editável e editar PDFs arrastando os textos. |
-| **Baixar pacotes** | Ver o que falta instalar e instalar com um clique, acompanhando o progresso. |
+| [Installation and usage](docs/en/installation.md) | Requirements, first install, everyday use, language, production mode and how to stop. |
+| [Dashboard tools](docs/en/tools.md) | What each module does and when to use it. |
+| [Background removal and AI models](docs/en/background-removal.md) | Cutout methods, models, memory use and alpha matting. |
+| [Transcription](docs/en/transcription.md) | Models, warm engine, speaker separation and AI summary. |
+| [KTX textures](docs/en/ktx-textures.md) | Presets, whole folders, orientation fix and Portfolio KTX. |
+| [Command line](docs/en/command-line.md) | How to use the tools without opening the dashboard. |
+| [Troubleshooting](docs/en/troubleshooting.md) | Common errors and how to fix each one. |
+| [Development](docs/en/development.md) | Project structure, API routes, tests and continuous integration. |
 
-## Começando
+## Contributing
 
-1. Dê dois cliques no **`sharpz.cmd`**, na raiz do projeto.
-2. Na primeira vez, escolha **1 · Instalar tudo e abrir**. Depois disso, use **2 · Abrir o painel**.
-3. O painel abre sozinho no Chrome, em <http://localhost:5174>.
+Bugs, ideas and pull requests are welcome. See [how to contribute](CONTRIBUTING.md), the [code of conduct](CODE_OF_CONDUCT.md) and the [security policy](SECURITY.md).
 
-O passo a passo completo está em [Instalação e uso](docs/instalacao.md).
+## License
 
-## Documentação
+The code is open source, under the [MIT license](LICENSE).
 
-| Página | Assunto |
-| --- | --- |
-| [Instalação e uso](docs/instalacao.md) | Requisitos, primeira instalação, uso diário, modo produção e como parar. |
-| [Ferramentas do painel](docs/ferramentas.md) | O que cada módulo faz e quando usar. |
-| [Remoção de fundo e modelos de IA](docs/remocao-de-fundo.md) | Métodos de recorte, modelos, uso de memória e alpha matting. |
-| [Transcrição](docs/transcricao.md) | Modelos, motor quente, separação de locutores e resumo por IA. |
-| [Texturas KTX](docs/texturas-ktx.md) | Presets, pasta inteira, correção de orientação e Portfólio KTX. |
-| [Linha de comando](docs/linha-de-comando.md) | Como usar as ferramentas sem abrir o painel. |
-| [Solução de problemas](docs/solucao-de-problemas.md) | Erros comuns e como resolver cada um. |
-| [Desenvolvimento](docs/desenvolvimento.md) | Estrutura do projeto, rotas da API e testes. |
-
-## Licença
-
-O código é aberto, sob a [licença MIT](LICENSE).
-
-Algumas dependências têm licença própria. O PyMuPDF, usado no Imagem para PDF e no Editor de PDF, é AGPL-3.0, e os modelos de IA de remoção de fundo e de transcrição seguem as licenças dos seus autores.
+Some dependencies have their own licenses. PyMuPDF, used in Image to PDF and in the PDF editor, is AGPL-3.0, and the background removal and transcription AI models follow their authors' licenses.
