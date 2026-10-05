@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+from src.i18n import get_lang, t, use_lang
+
 REPO_ROOT = Path(__file__).resolve().parent
 WHISPER_VENV = REPO_ROOT / "whisper-venv"
 WHISPER_PY = WHISPER_VENV / "Scripts" / "python.exe"
@@ -83,10 +85,10 @@ def _stream_cmd(args: list[str], emit: Emit, cwd: Optional[str] = None, env: Opt
             bufsize=1,
         )
     except FileNotFoundError:
-        emit(f"[erro] executavel nao encontrado: {args[0]}")
+        emit(t("packages.log.exe_missing", name=args[0]))
         return 127
     except Exception as exc:  # noqa: BLE001
-        emit(f"[erro] falha ao iniciar: {exc}")
+        emit(t("packages.log.start_failed", error=exc))
         return 1
 
     assert proc.stdout is not None
@@ -120,56 +122,56 @@ def _hf_cache_dir() -> Path:
 def _check_node() -> tuple[bool, str]:
     path = _which("node")
     if not path:
-        return False, "nao encontrado"
-    return True, _version_of(["node", "--version"]) or "instalado"
+        return False, t("packages.detail.not_found")
+    return True, _version_of(["node", "--version"]) or t("packages.detail.installed")
 
 
 def _check_uv() -> tuple[bool, str]:
     path = _which("uv")
     if not path:
-        return False, "nao encontrado"
-    return True, _version_of(["uv", "--version"]) or "instalado"
+        return False, t("packages.detail.not_found")
+    return True, _version_of(["uv", "--version"]) or t("packages.detail.installed")
 
 
 def _check_ffmpeg() -> tuple[bool, str]:
     path = _which("ffmpeg")
     if path:
-        return True, _version_of(["ffmpeg", "-version"])[:60] or "instalado"
-    return False, "nao encontrado"
+        return True, _version_of(["ffmpeg", "-version"])[:60] or t("packages.detail.installed")
+    return False, t("packages.detail.not_found")
 
 
 def _check_node_modules() -> tuple[bool, str]:
     nm = WEB_DIR / "node_modules"
     if nm.exists() and (nm / "next").exists():
-        return True, "dependencias web instaladas"
-    return False, "nao instalado"
+        return True, t("packages.detail.web_deps")
+    return False, t("packages.detail.not_installed")
 
 
 def _check_whisper_engine() -> tuple[bool, str]:
     if not WHISPER_PY.exists():
-        return False, "motor nao instalado"
+        return False, t("packages.detail.engine_missing")
     site = WHISPER_VENV / "Lib" / "site-packages"
     has_fw = (site / "faster_whisper").exists()
     has_wx = (site / "whisperx").exists() or any(site.glob("whisperx*"))
     if has_fw and has_wx:
         return True, "faster-whisper + whisperX"
     if has_fw:
-        return True, "faster-whisper (sem whisperX: alinhamento/diarizacao off)"
-    return False, "motor nao instalado"
+        return True, t("packages.detail.engine_partial")
+    return False, t("packages.detail.engine_missing")
 
 
 def _check_model() -> tuple[bool, str]:
     base = _hf_cache_dir() / "models--Systran--faster-whisper-large-v3"
     if not base.exists():
-        return False, "large-v3 nao baixado"
+        return False, t("packages.detail.model_missing")
     for model_bin in base.glob("snapshots/*/model.bin"):
         try:
             size = model_bin.stat().st_size
         except OSError:
             continue
         if size > 500 * 1024 * 1024:
-            return True, f"large-v3 pronto ({size // (1024 * 1024)} MB)"
-    return False, "download incompleto"
+            return True, t("packages.detail.model_ready", size=size // (1024 * 1024))
+    return False, t("packages.detail.model_partial")
 
 
 _TOKTX_DIRS = [
@@ -192,8 +194,8 @@ def find_toktx_path() -> Optional[str]:
 def _check_toktx() -> tuple[bool, str]:
     path = find_toktx_path()
     if path:
-        return True, _version_of([path, "--version"])[:60] or "instalado"
-    return False, "KTX-Software nao instalado"
+        return True, _version_of([path, "--version"])[:60] or t("packages.detail.installed")
+    return False, t("packages.detail.ktx_missing")
 
 
 def _check_ollama() -> tuple[bool, str]:
@@ -204,10 +206,10 @@ def _check_ollama() -> tuple[bool, str]:
     except Exception:
         running = False
     if _which("ollama"):
-        return True, "rodando em :11434" if running else "instalado (servico parado)"
+        return True, t("packages.detail.ollama_running") if running else t("packages.detail.ollama_stopped")
     if running:
-        return True, "respondendo em :11434"
-    return False, "nao instalado"
+        return True, t("packages.detail.ollama_responding")
+    return False, t("packages.detail.not_installed")
 
 
 _TESSERACT_DIRS = [
@@ -230,8 +232,8 @@ def find_tesseract_path() -> Optional[str]:
 def _check_tesseract() -> tuple[bool, str]:
     path = find_tesseract_path()
     if path:
-        return True, _version_of([path, "--version"])[:50] or "instalado"
-    return False, "nao instalado"
+        return True, _version_of([path, "--version"])[:50] or t("packages.detail.installed")
+    return False, t("packages.detail.not_installed")
 
 
 # ----------------------------------------------------------------------------
@@ -250,7 +252,7 @@ def _winget_installer(winget_id: str) -> Callable[[Emit], int]:
             emit,
         )
         if rc != 0:
-            emit(f"[aviso] winget retornou {rc} (pode ja estar instalado ou exigir reinicio).")
+            emit(t("packages.log.winget_code", code=rc))
         return rc
 
     return run
@@ -263,11 +265,11 @@ def _install_node_modules(emit: Emit) -> int:
 def _install_whisper_engine(emit: Emit) -> int:
     uv = _which("uv")
     if not uv:
-        emit("[erro] 'uv' nao encontrado. Instale o pacote 'uv' antes.")
+        emit(t("packages.log.uv_missing"))
         return 1
     env = _refreshed_env()
     if not WHISPER_PY.exists():
-        emit("Criando whisper-venv (Python 3.12)...")
+        emit(t("packages.log.creating_venv"))
         rc = _stream_cmd([uv, "venv", str(WHISPER_VENV), "--python", "3.12"], emit, env=env)
         if rc != 0:
             return rc
@@ -286,14 +288,14 @@ def _install_whisper_engine(emit: Emit) -> int:
 
 def _install_model(emit: Emit) -> int:
     if not WHISPER_PY.exists():
-        emit("[erro] Motor de transcricao ausente. Instale 'Motor de transcricao' antes.")
+        emit(t("packages.log.engine_missing"))
         return 1
     env = _refreshed_env()
     return _stream_cmd([str(WHISPER_PY), str(REPO_ROOT / "tools" / "download_model.py"), "large-v3"], emit, env=env)
 
 
 def _install_toktx(emit: Emit) -> int:
-    emit("Consultando o release mais recente do KTX-Software no GitHub...")
+    emit(t("packages.log.ktx_release"))
     try:
         req = urllib.request.Request(
             "https://api.github.com/repos/KhronosGroup/KTX-Software/releases/latest",
@@ -302,7 +304,7 @@ def _install_toktx(emit: Emit) -> int:
         with urllib.request.urlopen(req, timeout=30) as response:
             data = json.loads(response.read().decode("utf-8"))
     except Exception as exc:  # noqa: BLE001
-        emit(f"[erro] nao consegui consultar o GitHub: {exc}")
+        emit(t("packages.log.github_failed", error=exc))
         return 1
 
     asset = next(
@@ -310,32 +312,32 @@ def _install_toktx(emit: Emit) -> int:
         None,
     )
     if not asset:
-        emit("[erro] instalador Windows-x64 nao encontrado no release.")
+        emit(t("packages.log.asset_missing"))
         return 1
 
     name = asset["name"]
     url = asset["browser_download_url"]
     size_mb = asset.get("size", 0) // (1024 * 1024)
     dest = Path(tempfile.gettempdir()) / name
-    emit(f"Baixando {name} (~{size_mb} MB)...")
+    emit(t("packages.log.downloading", name=name, size=size_mb))
     try:
         urllib.request.urlretrieve(url, dest)
     except Exception as exc:  # noqa: BLE001
-        emit(f"[erro] falha no download: {exc}")
+        emit(t("packages.log.download_failed", error=exc))
         return 1
 
-    emit("Instalando (silencioso /S). Uma janela de permissao (UAC) vai aparecer — clique Sim.")
+    emit(t("packages.log.installing_silent"))
     ps = [
         "powershell", "-NoProfile", "-Command",
         f"$p = Start-Process -FilePath '{dest}' -ArgumentList '/S' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
     ]
     rc = _stream_cmd(ps, emit)
     if rc == 0 and find_toktx_path():
-        emit("[ok] toktx instalado e detectado.")
+        emit(t("packages.log.toktx_ok"))
     elif rc == 0:
-        emit("[ok] Instalador concluiu. Pode ser preciso reabrir o app pra detectar o toktx no PATH.")
+        emit(t("packages.log.toktx_path"))
     else:
-        emit("[erro] Instalacao nao concluiu (UAC negado?). Tente de novo.")
+        emit(t("packages.log.install_failed"))
     return rc
 
 
@@ -359,77 +361,81 @@ class Package:
 
 PACKAGES: list[Package] = [
     Package(
-        id="node", name="Node.js (LTS)",
-        description="Runtime que roda o painel web do Sharpz.",
+        id="node", name="packages.node.name",
+        description="packages.node.description",
         category="essencial", optional=False, size_hint="~30 MB",
         checker=_check_node, installer=_winget_installer("OpenJS.NodeJS.LTS"),
-        unlocks=["Painel web"],
+        unlocks=["packages.unlock.web_panel"],
     ),
     Package(
-        id="uv", name="uv (gerenciador Python)",
-        description="Cria os ambientes Python isolados e instala as libs de IA rapido.",
+        id="uv", name="packages.uv.name",
+        description="packages.uv.description",
         category="essencial", optional=False, size_hint="~15 MB",
         checker=_check_uv, installer=_winget_installer("astral-sh.uv"),
-        unlocks=["Motor de transcricao"],
+        unlocks=["packages.unlock.transcription_engine"],
     ),
     Package(
-        id="node_modules", name="Dependencias do painel (npm)",
-        description="Bibliotecas que o painel do Sharpz precisa para abrir no navegador.",
+        id="node_modules", name="packages.node_modules.name",
+        description="packages.node_modules.description",
         category="essencial", optional=False, size_hint="~300 MB",
         checker=_check_node_modules, installer=_install_node_modules,
-        manual_hint="Requer Node.js instalado.",
-        unlocks=["Painel web"],
+        manual_hint="packages.node_modules.manual_hint",
+        unlocks=["packages.unlock.web_panel"],
     ),
     Package(
-        id="ffmpeg", name="FFmpeg",
-        description="Decodifica audio/video pra transcricao.",
+        id="ffmpeg", name="packages.ffmpeg.name",
+        description="packages.ffmpeg.description",
         category="transcricao", optional=False, size_hint="~80 MB",
         checker=_check_ffmpeg, installer=_winget_installer("Gyan.FFmpeg"),
-        unlocks=["Transcricao"],
+        unlocks=["packages.unlock.transcription"],
     ),
     Package(
-        id="whisper_engine", name="Motor de transcricao (faster-whisper + whisperX)",
-        description="Bibliotecas de IA da transcricao (rodam no processador). Habilita transcricao, tempo por palavra e diarizacao.",
+        id="whisper_engine", name="packages.whisper_engine.name",
+        description="packages.whisper_engine.description",
         category="transcricao", optional=False, size_hint="~2.5 GB",
         checker=_check_whisper_engine, installer=_install_whisper_engine,
-        manual_hint="Requer uv instalado.",
-        unlocks=["Transcricao", "Tempo por palavra", "Diarizacao"],
+        manual_hint="packages.whisper_engine.manual_hint",
+        unlocks=["packages.unlock.transcription", "packages.unlock.word_timing", "packages.unlock.diarization"],
     ),
     Package(
-        id="model_large_v3", name="Modelo large-v3",
-        description="Modelo de transcricao de maxima qualidade (multilingue). Baixado uma vez e cacheado.",
+        id="model_large_v3", name="packages.model_large_v3.name",
+        description="packages.model_large_v3.description",
         category="transcricao", optional=False, size_hint="~3 GB",
         checker=_check_model, installer=_install_model,
-        manual_hint="Requer o Motor de transcricao instalado.",
-        unlocks=["Transcricao large-v3"],
+        manual_hint="packages.model_large_v3.manual_hint",
+        unlocks=["packages.unlock.transcription_large"],
     ),
     Package(
-        id="toktx", name="KTX-Software (toktx)",
-        description="Ferramenta oficial da Khronos pra gerar texturas KTX2. Habilita PNG -> KTX e Batch KTX.",
+        id="toktx", name="packages.toktx.name",
+        description="packages.toktx.description",
         category="ktx", optional=False, size_hint="~40 MB",
         checker=_check_toktx, installer=_install_toktx,
-        manual_hint="Instalador oficial pede confirmacao de administrador (UAC).",
-        unlocks=["PNG -> KTX", "Batch KTX"],
+        manual_hint="packages.toktx.manual_hint",
+        unlocks=["packages.unlock.png_ktx", "packages.unlock.batch_ktx"],
     ),
     Package(
-        id="ollama", name="Ollama (resumo por IA)",
-        description="LLM local opcional pra resumir transcricoes. Sem ele o resumo por IA fica indisponivel.",
+        id="ollama", name="packages.ollama.name",
+        description="packages.ollama.description",
         category="opcional", optional=True, size_hint="~700 MB",
         checker=_check_ollama, installer=_winget_installer("Ollama.Ollama"),
-        manual_hint="Depois de instalar, rode: ollama pull llama3.1",
-        unlocks=["Resumo por IA"],
+        manual_hint="packages.ollama.manual_hint",
+        unlocks=["packages.unlock.ai_summary"],
     ),
     Package(
-        id="tesseract", name="Tesseract OCR (fallback Imagem -> PDF)",
-        description="Motor de OCR local. Fallback do modo Imagem -> PDF quando nao ha Vision LLM configurado. Sem ele, o PDF sai identico mas sem camada de texto.",
+        id="tesseract", name="packages.tesseract.name",
+        description="packages.tesseract.description",
         category="opcional", optional=True, size_hint="~100 MB",
         checker=_check_tesseract, installer=_winget_installer("UB-Mannheim.TesseractOCR"),
-        manual_hint="Para OCR em portugues, instale tambem o idioma 'por' (por.traineddata) no instalador UB-Mannheim.",
-        unlocks=["OCR local (Imagem -> PDF)"],
+        manual_hint="packages.tesseract.manual_hint",
+        unlocks=["packages.unlock.local_ocr"],
     ),
 ]
 
 PACKAGES_BY_ID = {pkg.id: pkg for pkg in PACKAGES}
+
+
+def _size_hint(pkg: Package) -> str:
+    return pkg.size_hint.replace(".", ",") if get_lang() == "pt-BR" else pkg.size_hint
 
 
 def list_packages() -> list[dict]:
@@ -438,19 +444,19 @@ def list_packages() -> list[dict]:
         try:
             installed, detail = pkg.checker()
         except Exception as exc:  # noqa: BLE001
-            installed, detail = False, f"erro ao checar: {exc}"
+            installed, detail = False, t("packages.detail.check_failed", error=exc)
         items.append({
             "id": pkg.id,
-            "name": pkg.name,
-            "description": pkg.description,
+            "name": t(pkg.name),
+            "description": t(pkg.description),
             "category": pkg.category,
             "optional": pkg.optional,
-            "size_hint": pkg.size_hint,
+            "size_hint": _size_hint(pkg),
             "installed": installed,
             "detail": detail,
             "installable": pkg.installer is not None,
-            "manual_hint": pkg.manual_hint,
-            "unlocks": pkg.unlocks,
+            "manual_hint": t(pkg.manual_hint) if pkg.manual_hint else "",
+            "unlocks": [t(key) for key in pkg.unlocks],
         })
     return items
 
@@ -516,26 +522,28 @@ class PackageManager:
         job = _InstallJob(job_id, package_id)
         with self._lock:
             self._jobs[job_id] = job
-        threading.Thread(target=self._run, args=(job, pkg), daemon=True).start()
+        threading.Thread(target=self._run, args=(job, pkg, get_lang()), daemon=True).start()
         return job_id
 
-    def _run(self, job: _InstallJob, pkg: Package) -> None:
-        job.emit(f"== Instalando: {pkg.name} ({pkg.size_hint}) ==")
-        try:
-            assert pkg.installer is not None
-            rc = pkg.installer(job.emit)
-        except Exception as exc:  # noqa: BLE001
-            job.emit(f"[erro] {type(exc).__name__}: {exc}")
-            rc = 1
-        installed, detail = (False, "")
-        try:
-            installed, detail = pkg.checker()
-        except Exception:
-            pass
-        if installed:
-            job.emit(f"[ok] {pkg.name}: {detail}")
-            rc = 0
-        job.finish(rc if rc is not None else 0)
+    def _run(self, job: _InstallJob, pkg: Package, lang: str | None = None) -> None:
+        with use_lang(lang):
+            name = t(pkg.name)
+            job.emit(t("packages.log.installing", name=name, size=_size_hint(pkg)))
+            try:
+                assert pkg.installer is not None
+                rc = pkg.installer(job.emit)
+            except Exception as exc:  # noqa: BLE001
+                job.emit(t("packages.log.crashed", kind=type(exc).__name__, error=exc))
+                rc = 1
+            installed, detail = (False, "")
+            try:
+                installed, detail = pkg.checker()
+            except Exception:
+                pass
+            if installed:
+                job.emit(f"[ok] {name}: {detail}")
+                rc = 0
+            job.finish(rc if rc is not None else 0)
 
     def get(self, job_id: str) -> Optional[_InstallJob]:
         return self._jobs.get(job_id)
@@ -551,7 +559,7 @@ def _sse(payload: dict) -> str:
 def stream_job(job_id: str):
     job = MANAGER.get(job_id)
     if job is None:
-        yield _sse({"type": "error", "message": "job nao encontrado"})
+        yield _sse({"type": "error", "message": t("server.job_not_found")})
         return
     sub, snapshot, done = job.subscribe()
     for line in snapshot:

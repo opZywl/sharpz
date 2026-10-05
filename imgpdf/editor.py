@@ -15,6 +15,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from imgpdf.pdfbuild import _sanitize, A4
+from src.i18n import t
 
 
 def _find_chrome() -> str | None:
@@ -32,7 +33,7 @@ def render_html_pdf(html: str) -> bytes:
     icones e estilos exatamente como na tela do editor (WYSIWYG)."""
     chrome = _find_chrome()
     if not chrome:
-        raise RuntimeError("Google Chrome nao encontrado para exportar o PDF.")
+        raise RuntimeError(t("editor.chrome_missing_pdf"))
     with tempfile.TemporaryDirectory() as tmp:
         hp = Path(tmp) / "doc.html"
         op = Path(tmp) / "out.pdf"
@@ -44,7 +45,7 @@ def render_html_pdf(html: str) -> bytes:
             timeout=90, capture_output=True,
         )
         if not op.exists():
-            raise RuntimeError("Chrome nao gerou o PDF.")
+            raise RuntimeError(t("editor.chrome_no_pdf"))
         return op.read_bytes()
 
 
@@ -52,7 +53,7 @@ def render_html_png(html: str, page_w: float, page_h: float, scale: int = 2) -> 
     """Renderiza o HTML (A4) em PNG via Chrome headless (screenshot WYSIWYG)."""
     chrome = _find_chrome()
     if not chrome:
-        raise RuntimeError("Google Chrome nao encontrado para exportar o PNG.")
+        raise RuntimeError(t("editor.chrome_missing_png"))
     w_px = max(1, round(page_w * 4 / 3))
     h_px = max(1, round(page_h * 4 / 3))
     scale = 1 if scale < 1 else 3 if scale > 3 else int(scale)
@@ -68,7 +69,7 @@ def render_html_png(html: str, page_w: float, page_h: float, scale: int = 2) -> 
             timeout=90, capture_output=True,
         )
         if not op.exists():
-            raise RuntimeError("Chrome nao gerou o PNG.")
+            raise RuntimeError(t("editor.chrome_no_png"))
         return op.read_bytes()
 
 _BOLD = 1 << 4

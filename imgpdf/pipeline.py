@@ -14,6 +14,7 @@ from typing import Callable
 from PIL import Image
 
 from imgpdf import pdfbuild, vision as vision_mod
+from src.i18n import t
 
 Emit = Callable[[dict], None]
 
@@ -36,13 +37,13 @@ def run(job_id: str, image_path: str | Path, out_dir: str | Path, options: dict,
     with Image.open(image_path) as im:
         img_w, img_h = im.size
         img_mode = im.mode
-    emit({"type": "log", "level": "info", "message": f"Imagem carregada: {img_w}x{img_h} ({img_mode})"})
+    emit({"type": "log", "level": "info", "message": t("imgpdf.log.loaded", width=img_w, height=img_h, mode=img_mode)})
 
     # 2) analisar layout
     emit({"type": "stage", "stage": "layout"})
     emit({"type": "progress", "pct": 0.1, "stage": "layout"})
     tiles = vision_mod._tiles(img_w, img_h)
-    emit({"type": "log", "level": "info", "message": f"Layout: {len(tiles)} regiao(oes) p/ leitura"})
+    emit({"type": "log", "level": "info", "message": t("imgpdf.log.layout", count=len(tiles))})
 
     # 3+4) transcrever (+verificar): o modulo vision emite seus proprios logs/stages
     emit({"type": "progress", "pct": 0.2, "stage": "transcrever"})
@@ -56,7 +57,7 @@ def run(job_id: str, image_path: str | Path, out_dir: str | Path, options: dict,
     emit({"type": "stage", "stage": "montar"})
     chars = sum(len(b["text"]) for b in blocks)
     emit({"type": "log", "level": "info",
-          "message": f"Camada: {len(blocks)} bloco(s), ~{chars} caracteres (motor: {engine})"})
+          "message": t("imgpdf.log.layer", blocks=len(blocks), chars=chars, engine=t(f"imgpdf.engine.{engine}"))})
 
     # 6) construir PDF
     emit({"type": "stage", "stage": "construir-pdf"})
@@ -71,12 +72,17 @@ def run(job_id: str, image_path: str | Path, out_dir: str | Path, options: dict,
     emit({"type": "stage", "stage": "conferir"})
     emit({"type": "progress", "pct": 0.92, "stage": "conferir"})
     emit({"type": "log", "level": "info",
-          "message": (f"PDF conferido: {report['chars']} chars, {report['hyphens']} hifens, "
-                      f"glitches={report['glitch_total']}, pagina {report['page_pt']} pt")})
+          "message": t(
+              "imgpdf.log.checked",
+              chars=report["chars"],
+              hyphens=report["hyphens"],
+              glitches=report["glitch_total"],
+              page=report["page_pt"],
+          )})
     if report["glitch_total"] == 0:
-        emit({"type": "log", "level": "ok", "message": "Camada de texto limpa (0 NBSP / hifen-suave / parentese ornamental)"})
+        emit({"type": "log", "level": "ok", "message": t("imgpdf.log.clean")})
     else:
-        emit({"type": "log", "level": "warn", "message": f"Glitches detectados: {report['glitches']}"})
+        emit({"type": "log", "level": "warn", "message": t("imgpdf.log.glitches", glitches=report["glitches"])})
 
     txt_path = out_dir / "camada-texto.txt"
     pdfbuild.write_text_layer(pdf_path, txt_path)
@@ -98,15 +104,15 @@ def run(job_id: str, image_path: str | Path, out_dir: str | Path, options: dict,
             name = _safe_name(options.get("output_name") or "", image_path.stem) + ".pdf"
             dest_pdf = dest / name
             shutil.copy2(pdf_path, dest_pdf)
-            shutil.copy2(txt_path, dest / (Path(name).stem + "-camada-texto.txt"))
+            shutil.copy2(txt_path, dest / (Path(name).stem + t("imgpdf.text_layer_suffix")))
             dest_dir = str(dest)
-            emit({"type": "log", "level": "ok", "message": f"PDF copiado para: {dest_pdf}"})
+            emit({"type": "log", "level": "ok", "message": t("imgpdf.log.copied", path=dest_pdf)})
         except Exception as exc:
-            emit({"type": "log", "level": "warn", "message": f"Nao consegui copiar p/ a pasta de saida: {exc}"})
+            emit({"type": "log", "level": "warn", "message": t("imgpdf.log.copy_failed", error=exc)})
 
     manifest = {
         "pdf": str(pdf_path),
-        "pdf_name": "documento.pdf",
+        "pdf_name": t("imgpdf.pdf_filename"),
         "text_layer": str(txt_path),
         "preview": str(preview_path) if preview_path else None,
         "out_dir": str(out_dir),
@@ -118,5 +124,5 @@ def run(job_id: str, image_path: str | Path, out_dir: str | Path, options: dict,
         "degraded": degraded,
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    emit({"type": "log", "level": "ok", "message": "Concluido."})
+    emit({"type": "log", "level": "ok", "message": t("imgpdf.log.done")})
     return manifest

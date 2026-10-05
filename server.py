@@ -40,18 +40,20 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers
 
+from src.i18n import LanguageMiddleware, scope_lang, t, use_lang
 from src.memory import is_out_of_memory
 from src.processor import (
     AVAILABLE_MODELS,
     DEFAULT_MODEL,
     HEAVY_MODELS,
-    MODEL_DETAILS,
     BackgroundOptions,
     ModelOutOfMemory,
     VectorOptions,
     _pick_chroma_key,  # noqa: PLC2701
     memory_message,
+    model_detail,
     model_downloaded,
+    model_label,
     png_to_svg,
     process_image,
     release_sessions,
@@ -105,6 +107,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(LanguageMiddleware)
 
 LOCAL_HOSTNAMES = {"127.0.0.1", "localhost", "::1", "testserver"}
 
@@ -128,7 +131,7 @@ class LocalOnlyMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http" and not _is_local_request(Headers(scope=scope)):
-            response = JSONResponse({"detail": "Requests are only accepted from this computer."}, status_code=403)
+            response = JSONResponse({"detail": t("server.local_only", scope_lang(scope))}, status_code=403)
             await response(scope, receive, send)
             return
         await self.app(scope, receive, send)
@@ -139,31 +142,35 @@ app.add_middleware(LocalOnlyMiddleware)
 logger = logging.getLogger("uvicorn.error")
 
 
-async def _memory_error_response(exc: BaseException) -> JSONResponse:
+async def _memory_error_response(exc: BaseException, lang: str) -> JSONResponse:
     await run_in_threadpool(release_sessions)
     logger.warning("Memoria insuficiente: %r", exc.__cause__ or exc)
-    message = str(exc) if isinstance(exc, ModelOutOfMemory) else memory_message()
+    with use_lang(lang):
+        message = str(exc) if isinstance(exc, ModelOutOfMemory) else memory_message()
     return JSONResponse(status_code=503, content={"detail": message, "code": "memoria_insuficiente"})
 
 
 @app.exception_handler(MemoryError)
 async def memory_error_handler(request: Request, exc: MemoryError) -> JSONResponse:
-    return await _memory_error_response(exc)
+    return await _memory_error_response(exc, scope_lang(request.scope))
 
 
 @app.exception_handler(Exception)
 async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    lang = scope_lang(request.scope)
     if is_out_of_memory(exc):
-        return await _memory_error_response(exc)
+        return await _memory_error_response(exc, lang)
     reason = str(exc).strip()
-    message = f"Erro inesperado no servidor: {reason}" if reason else "Erro inesperado no servidor. Tente de novo."
+    if reason:
+        message = t("server.error.unexpected", lang, reason=reason)
+    else:
+        message = t("server.error.unexpected_retry", lang)
     return JSONResponse(status_code=500, content={"detail": message, "code": "erro_interno"})
 
 
 SUPPORTED_BATCH_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
 PORTFOLIO_KTX_WIDTH = 960
 PORTFOLIO_KTX_HEIGHT = 540
-KTX_MISSING_MESSAGE = "KTX-Software não encontrado. Instale em Baixar pacotes (Texturas KTX) e tente de novo."
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -196,7 +203,7 @@ def _img_to_b64(img: Image.Image, fmt: str = "png") -> str:
 async def _read_upload_image(file: UploadFile) -> tuple[bytes, Image.Image]:
     raw = await file.read()
     if not raw:
-        raise HTTPException(status_code=400, detail="Arquivo vazio.")
+        raise HTTPException(status_code=400, detail=t("server.file_empty"))
 
     try:
         src_img = Image.open(io.BytesIO(raw))
@@ -204,21 +211,15 @@ async def _read_upload_image(file: UploadFile) -> tuple[bytes, Image.Image]:
     except MemoryError:
         raise
     except Image.DecompressionBombError as exc:
-        raise HTTPException(
-            status_code=413,
-            detail="Imagem grande demais para processar. Reduza a resolução e tente de novo.",
-        ) from exc
+        raise HTTPException(status_code=413, detail=t("server.image_too_large")) from exc
     except Exception as exc:
-        raise HTTPException(
-            status_code=400,
-            detail="Imagem inválida ou formato não suportado. Use PNG, JPG, WEBP, BMP ou TIFF.",
-        ) from exc
+        raise HTTPException(status_code=400, detail=t("server.image_invalid")) from exc
     return raw, src_img
 
 
 def _require_model(model: str) -> None:
     if model not in AVAILABLE_MODELS:
-        raise HTTPException(status_code=400, detail=f"Modelo desconhecido: {model}. Escolha um modelo da lista.")
+        raise HTTPException(status_code=400, detail=t("server.model_unknown", model=model))
 
 
 def _render_svg_to_b64_png(svg: str, max_dim: int = 800, background: str | None = None) -> str:
@@ -492,13 +493,13 @@ async def list_models() -> ModelsResponse:
         models=[
             ModelInfo(
                 key=k,
-                label=v,
+                label=model_label(k),
                 is_default=(k == DEFAULT_MODEL),
-                detail=MODEL_DETAILS.get(k, ""),
+                detail=model_detail(k),
                 heavy=k in HEAVY_MODELS,
                 downloaded=model_downloaded(k),
             )
-            for k, v in AVAILABLE_MODELS.items()
+            for k in AVAILABLE_MODELS
         ]
     )
 
@@ -741,7 +742,7 @@ async def ktx_single(
     validate_quality: bool = Form(False),
 ) -> KtxSingleResponse:
     if ktx_find_toktx() is None:
-        return KtxSingleResponse(success=False, summary=KTX_MISSING_MESSAGE)
+        return KtxSingleResponse(success=False, summary=t("server.ktx.missing"))
 
     _, image = await _read_upload_image(file)
 
@@ -765,15 +766,15 @@ async def ktx_single(
             )
 
             if not result.success:
-                return KtxSingleResponse(success=False, summary=result.error or "Falha na conversão KTX.")
+                return KtxSingleResponse(success=False, summary=result.error or t("server.ktx.failed"))
 
             summary_lines = [
-                f"Convertido {filename_stem}.ktx em {result.duration_ms} ms",
+                t("server.ktx.converted", name=f"{filename_stem}.ktx", ms=result.duration_ms),
                 f"PNG {result.size_input / 1024:.0f} KB -> KTX {result.size_output / 1024:.0f} KB",
                 f"Preset: {'auto' if auto_preset else preset}",
             ]
             if result.preprocessed and result.pre_size != result.final_size:
-                summary_lines.append(f"Alinhado {result.pre_size} -> {result.final_size}")
+                summary_lines.append(t("server.ktx.aligned", before=result.pre_size, after=result.final_size))
             if result.psnr is not None:
                 quality = f"PSNR {result.psnr:.1f} dB {result.quality_grade}"
                 if result.ssim is not None:
@@ -807,18 +808,18 @@ async def ktx_batch(
     max_workers: int = Form(4),
 ) -> KtxBatchResponse:
     if ktx_find_toktx() is None:
-        return KtxBatchResponse(success=False, summary=KTX_MISSING_MESSAGE)
+        return KtxBatchResponse(success=False, summary=t("server.ktx.missing"))
 
     def work() -> KtxBatchResponse:
         folder = Path(folder_path).expanduser().resolve()
         out = Path(output_path).expanduser().resolve()
 
         if not folder.exists() or not folder.is_dir():
-            return KtxBatchResponse(success=False, summary=f"Pasta de entrada não encontrada: {folder}")
+            return KtxBatchResponse(success=False, summary=t("server.ktx.input_missing", path=folder))
 
         images = ktx_collect_images(folder, recursive=recursive)
         if not images:
-            return KtxBatchResponse(success=False, summary=f"Nenhuma imagem PNG/JPG em {folder}")
+            return KtxBatchResponse(success=False, summary=t("server.ktx.no_images", path=folder))
 
         workers = max(1, min(int(max_workers), 16))
         results = ktx_batch_convert(
@@ -919,11 +920,11 @@ async def batch_pipeline(
         out = Path(output_dir).expanduser().resolve()
 
         if not source.exists():
-            return BatchPipelineResponse(success=False, summary=f"Caminho não encontrado: {source}")
+            return BatchPipelineResponse(success=False, summary=t("server.batch.path_missing", path=source))
 
         inputs = _collect_pipeline_inputs(source, recursive=recursive)
         if not inputs:
-            return BatchPipelineResponse(success=False, summary=f"Nenhuma imagem suportada em {source}")
+            return BatchPipelineResponse(success=False, summary=t("server.batch.no_images", path=source))
 
         out.mkdir(parents=True, exist_ok=True)
 
@@ -995,14 +996,14 @@ async def batch_pipeline(
         skipped = len(inputs) - len(files)
         total_ms = int((time.perf_counter() - total_t0) * 1000)
         lines = [
-            f"Processadas {success_count}/{len(inputs)} imagem(ns) em {total_ms / 1000:.2f}s",
-            f"Saída: {out}",
+            t("server.batch.processed", done=success_count, total=len(inputs), seconds=f"{total_ms / 1000:.2f}"),
+            t("server.batch.output", path=out),
         ]
         if out_of_memory and skipped:
-            lines.append(f"Lote interrompido por falta de memória: {skipped} imagem(ns) não processada(s).")
+            lines.append(t("server.batch.out_of_memory", count=skipped))
         if failures:
             lines.append("")
-            lines.append("Falhas:")
+            lines.append(t("server.batch.failures"))
             lines.extend(f"- {Path(item.input_path).name}: {item.error}" for item in failures)
 
         return BatchPipelineResponse(
@@ -1026,7 +1027,7 @@ async def ktx_orientation(
 ) -> KtxPatchResponse:
     raw = await file.read()
     if not raw:
-        raise HTTPException(status_code=400, detail="Arquivo vazio.")
+        raise HTTPException(status_code=400, detail=t("server.file_empty"))
 
     stem = Path(output_name or file.filename or "texture").stem or "texture"
     filename = _safe_download_name(stem, "texture", ".ktx")
@@ -1040,7 +1041,7 @@ async def ktx_orientation(
                 patch_orientation(input_ktx)
                 patched = input_ktx.read_bytes()
         except Exception as exc:
-            return KtxPatchResponse(success=False, summary=f"Não consegui corrigir a orientação do KTX: {exc}")
+            return KtxPatchResponse(success=False, summary=t("server.orientation.failed", error=exc))
 
         saved_path = None
         if output_path.strip():
@@ -1052,7 +1053,7 @@ async def ktx_orientation(
 
         return KtxPatchResponse(
             success=True,
-            summary="Orientação corrigida: a textura aparece na posição certa na cena 3D.",
+            summary=t("server.orientation.done"),
             filename=filename,
             ktx_b64=base64.b64encode(patched).decode("ascii"),
             saved_path=saved_path,
@@ -1070,10 +1071,7 @@ async def portfolio_ktx(
     output_path: str = Form(""),
 ) -> PortfolioKtxResponse:
     if not _has_python_module("alktx2"):
-        return PortfolioKtxResponse(
-            success=False,
-            summary="O conversor do Portfolio KTX não está instalado. Rode o sharpz.cmd e escolha Instalar.",
-        )
+        return PortfolioKtxResponse(success=False, summary=t("server.portfolio.missing"))
 
     raw, image = await _read_upload_image(file)
     stem = Path(output_name or file.filename or "portfolio-texture").stem or "portfolio-texture"
@@ -1103,7 +1101,7 @@ async def portfolio_ktx(
                 patch_orientation(output_ktx)
                 ktx_bytes = output_ktx.read_bytes()
         except Exception as exc:
-            return PortfolioKtxResponse(success=False, summary=f"Falha ao gerar o Portfolio KTX: {exc}")
+            return PortfolioKtxResponse(success=False, summary=t("server.portfolio.failed", error=exc))
 
         saved_path = None
         if output_path.strip():
@@ -1116,13 +1114,17 @@ async def portfolio_ktx(
         duration_ms = int((time.perf_counter() - start) * 1000)
         summary = "\n".join(
             [
-                f"Ajustado {source_size[0]}x{source_size[1]} -> {fitted_size[0]}x{fitted_size[1]}",
-                f"Tela {PORTFOLIO_KTX_WIDTH}x{PORTFOLIO_KTX_HEIGHT}, ETC1S q255, sRGB, sem mipmaps",
+                t(
+                    "server.portfolio.fitted",
+                    before=f"{source_size[0]}x{source_size[1]}",
+                    after=f"{fitted_size[0]}x{fitted_size[1]}",
+                ),
+                t("server.portfolio.canvas", size=f"{PORTFOLIO_KTX_WIDTH}x{PORTFOLIO_KTX_HEIGHT}"),
                 f"PNG {len(raw) / 1024:.0f} KB -> KTX {len(ktx_bytes) / 1024:.0f} KB",
             ]
         )
         if saved_path:
-            summary += f"\nSalvo em: {saved_path}"
+            summary += "\n" + t("server.portfolio.saved", path=saved_path)
 
         return PortfolioKtxResponse(
             success=True,
@@ -1149,7 +1151,7 @@ def _parse_formats(formats: str) -> list[str]:
 
 def _require_transcribe_job(job_id: str) -> None:
     if not TRANSCRIBE_STORE.exists(job_id):
-        raise HTTPException(status_code=404, detail="Job não encontrado.")
+        raise HTTPException(status_code=404, detail=t("server.job_not_found"))
 
 
 def _store_transcribe_upload(file: UploadFile) -> tuple[Path, str, int]:
@@ -1165,7 +1167,7 @@ def _store_transcribe_upload(file: UploadFile) -> tuple[Path, str, int]:
 def _transcribe_model_or_404(key: str) -> str:
     model_key = transcribe_model_key(key)
     if model_key is None:
-        raise HTTPException(status_code=404, detail=f"Modelo desconhecido: {key}.")
+        raise HTTPException(status_code=404, detail=t("transcribe.model_unknown", key=key))
     return model_key
 
 
@@ -1216,17 +1218,17 @@ async def transcribe_create(
         upload_target, source_sha1, size = await run_in_threadpool(_store_transcribe_upload, file)
         if size == 0:
             upload_target.unlink(missing_ok=True)
-            raise HTTPException(status_code=400, detail="O arquivo enviado está vazio.")
+            raise HTTPException(status_code=400, detail=t("server.upload_empty"))
         input_path = str(upload_target)
     elif local_path.strip():
         candidate = Path(local_path.strip().strip('"')).expanduser()
         if not candidate.is_file():
-            raise HTTPException(status_code=400, detail=f"Arquivo local não encontrado: {candidate}")
+            raise HTTPException(status_code=400, detail=t("transcribe.local_missing", path=candidate))
         input_path = str(candidate)
     elif source_url:
         input_path = None
     else:
-        raise HTTPException(status_code=400, detail="Envie um arquivo, informe um caminho local ou uma URL.")
+        raise HTTPException(status_code=400, detail=t("transcribe.no_source"))
 
     options = {
         "input_path": input_path,
@@ -1279,7 +1281,7 @@ def transcribe_model_download(key: str) -> TranscribeModelDownloadStarted:
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except OSError as exc:
-        raise HTTPException(status_code=503, detail=f"Não consegui iniciar o download do modelo: {exc}") from exc
+        raise HTTPException(status_code=503, detail=t("transcribe.model_download_start_failed", error=exc)) from exc
     return TranscribeModelDownloadStarted(ok=True, status=status)
 
 
@@ -1304,7 +1306,7 @@ def transcribe_capabilities() -> TranscribeCapabilitiesResponse:
 async def transcribe_job(job_id: str) -> dict:
     state = TRANSCRIBE_STORE.get(job_id)
     if state is None:
-        raise HTTPException(status_code=404, detail="Job não encontrado.")
+        raise HTTPException(status_code=404, detail=t("server.job_not_found"))
     return state
 
 
@@ -1322,7 +1324,7 @@ async def transcribe_job_stream(job_id: str, request: Request, since: int | None
 def transcribe_job_cancel(job_id: str) -> dict:
     result = TRANSCRIBE_STORE.cancel(job_id)
     if result is None:
-        raise HTTPException(status_code=404, detail="Job não encontrado.")
+        raise HTTPException(status_code=404, detail=t("server.job_not_found"))
     return result
 
 
@@ -1332,7 +1334,7 @@ async def transcribe_job_download(job_id: str, format: str) -> FileResponse:
     fmt = format.strip().lower()
     path = TRANSCRIBE_STORE.get_file(job_id, fmt)
     if path is None:
-        raise HTTPException(status_code=404, detail=f"Arquivo '{fmt}' indisponível para este job.")
+        raise HTTPException(status_code=404, detail=t("transcribe.file_unavailable", fmt=fmt))
     return FileResponse(str(path), filename=path.name, media_type="application/octet-stream")
 
 
@@ -1341,7 +1343,7 @@ async def transcribe_job_audio(job_id: str) -> FileResponse:
     _require_transcribe_job(job_id)
     path = TRANSCRIBE_STORE.get_input_path(job_id)
     if path is None:
-        raise HTTPException(status_code=404, detail="Mídia de entrada indisponível para este job.")
+        raise HTTPException(status_code=404, detail=t("transcribe.media_unavailable"))
     media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     return FileResponse(
         str(path),
@@ -1354,22 +1356,22 @@ async def transcribe_job_audio(job_id: str) -> FileResponse:
 def transcribe_job_summarize(job_id: str, payload: TranscribeSummarizeRequest) -> TranscribeSummarizeResponse:
     text = TRANSCRIBE_STORE.get_text(job_id)
     if text is None:
-        raise HTTPException(status_code=404, detail="Job não encontrado.")
+        raise HTTPException(status_code=404, detail=t("server.job_not_found"))
     if not text.strip():
-        raise HTTPException(status_code=400, detail="Este job ainda não tem texto transcrito para resumir.")
+        raise HTTPException(status_code=400, detail=t("transcribe.summary.no_text"))
 
     base_url = payload.base_url.strip().rstrip("/")
     if not base_url:
-        raise HTTPException(status_code=400, detail="Informe a base_url do endpoint LLM (ex: http://localhost:11434/v1).")
+        raise HTTPException(status_code=400, detail=t("transcribe.summary.base_url"))
     if not payload.model.strip():
-        raise HTTPException(status_code=400, detail="Informe o modelo do LLM.")
+        raise HTTPException(status_code=400, detail=t("transcribe.summary.model"))
 
     body = {
         "model": payload.model.strip(),
         "messages": [
             {
                 "role": "system",
-                "content": "Você resume transcrições em português de forma clara e estruturada (título, tópicos com os pontos principais e próximos passos, se houver).",
+                "content": t("transcribe.summary.prompt"),
             },
             {"role": "user", "content": text},
         ],
@@ -1398,20 +1400,20 @@ def transcribe_job_summarize(job_id: str, payload: TranscribeSummarizeRequest) -
             detail = ""
         raise HTTPException(
             status_code=502,
-            detail=f"O LLM em {base_url} respondeu com erro {exc.code}. {detail}".strip(),
+            detail=t("transcribe.summary.http_error", url=base_url, code=exc.code, detail=detail).strip(),
         )
     except urllib.error.URLError as exc:
         raise HTTPException(
             status_code=502,
-            detail=f"Não consegui falar com o LLM em {base_url}. Verifique se o Ollama/endpoint está rodando. ({exc.reason})",
+            detail=t("transcribe.summary.unreachable", url=base_url, reason=exc.reason),
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Falha ao resumir via LLM em {base_url}: {exc}")
+        raise HTTPException(status_code=502, detail=t("transcribe.summary.failed", url=base_url, error=exc))
 
     try:
         summary = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError):
-        raise HTTPException(status_code=502, detail="Resposta do LLM em formato inesperado (sem choices/message).")
+        raise HTTPException(status_code=502, detail=t("transcribe.summary.bad_response"))
 
     return TranscribeSummarizeResponse(summary=summary)
 
@@ -1421,7 +1423,7 @@ async def transcribe_job_complete(job_id: str) -> dict:
     _require_transcribe_job(job_id)
     manifest = TRANSCRIBE_STORE.get_complete_manifest(job_id)
     if manifest is None:
-        raise HTTPException(status_code=404, detail="Este job não tem pacote Complete.")
+        raise HTTPException(status_code=404, detail=t("transcribe.complete.missing"))
     return manifest
 
 
@@ -1430,7 +1432,7 @@ async def transcribe_job_complete_file(job_id: str, path: str) -> FileResponse:
     _require_transcribe_job(job_id)
     resolved = TRANSCRIBE_STORE.get_complete_file(job_id, path)
     if resolved is None:
-        raise HTTPException(status_code=404, detail="Arquivo não encontrado no pacote.")
+        raise HTTPException(status_code=404, detail=t("transcribe.complete.file_missing"))
     media_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
     return FileResponse(str(resolved), media_type=media_type, content_disposition_type="inline")
 
@@ -1440,7 +1442,7 @@ async def transcribe_job_complete_zip(job_id: str) -> FileResponse:
     _require_transcribe_job(job_id)
     zip_path = TRANSCRIBE_STORE.get_zip(job_id)
     if zip_path is None:
-        raise HTTPException(status_code=404, detail="Zip indisponível para este job.")
+        raise HTTPException(status_code=404, detail=t("transcribe.complete.zip_missing"))
     return FileResponse(str(zip_path), filename=zip_path.name, media_type="application/zip")
 
 
@@ -1449,7 +1451,7 @@ async def transcribe_job_complete_open_folder(job_id: str) -> dict:
     _require_transcribe_job(job_id)
     ok = TRANSCRIBE_STORE.open_complete_folder(job_id)
     if not ok:
-        raise HTTPException(status_code=400, detail="Não foi possível abrir a pasta neste ambiente.")
+        raise HTTPException(status_code=400, detail=t("server.open_folder_failed"))
     return {"ok": True}
 
 
@@ -1485,7 +1487,7 @@ async def packages_list() -> PackagesResponse:
 async def packages_install(package_id: str) -> PackageInstallStarted:
     job_id = pkg_manager.start(package_id)
     if job_id is None:
-        raise HTTPException(status_code=404, detail="Pacote desconhecido ou sem instalador automatico.")
+        raise HTTPException(status_code=404, detail=t("packages.unknown"))
     return PackageInstallStarted(job_id=job_id)
 
 
@@ -1502,7 +1504,7 @@ async def packages_stream(job_id: str) -> StreamingResponse:
 async def packages_job(job_id: str) -> dict:
     job = pkg_manager.get(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+        raise HTTPException(status_code=404, detail=t("server.job_not_found"))
     return job.snapshot()
 
 
@@ -1531,7 +1533,7 @@ async def image_to_pdf_create(
     if file is not None and file.filename:
         raw = await file.read()
         if not raw:
-            raise HTTPException(status_code=400, detail="Arquivo enviado esta vazio.")
+            raise HTTPException(status_code=400, detail=t("server.upload_empty"))
         IMGPDF_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         safe_name = Path(file.filename).name or "imagem"
         target = IMGPDF_UPLOAD_DIR / f"{uuid.uuid4().hex}_{safe_name}"
@@ -1540,10 +1542,10 @@ async def image_to_pdf_create(
     elif local_path.strip():
         candidate = Path(local_path.strip()).expanduser()
         if not candidate.exists():
-            raise HTTPException(status_code=400, detail=f"Caminho local nao encontrado: {candidate}")
+            raise HTTPException(status_code=400, detail=t("imgpdf.local_missing", path=candidate))
         input_path = str(candidate)
     else:
-        raise HTTPException(status_code=400, detail="Envie uma imagem ou informe local_path.")
+        raise HTTPException(status_code=400, detail=t("imgpdf.no_source"))
 
     options = {
         "input_path": input_path,
@@ -1571,14 +1573,14 @@ async def image_to_pdf_capabilities() -> dict:
 async def image_to_pdf_job(job_id: str) -> dict:
     state = IMGPDF_STORE.get(job_id)
     if state is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+        raise HTTPException(status_code=404, detail=t("server.job_not_found"))
     return state
 
 
 @app.get("/api/image-to-pdf/jobs/{job_id}/stream")
 async def image_to_pdf_stream(job_id: str) -> StreamingResponse:
     if IMGPDF_STORE.get(job_id) is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+        raise HTTPException(status_code=404, detail=t("server.job_not_found"))
     return StreamingResponse(
         IMGPDF_STORE.stream(job_id),
         media_type="text/event-stream",
@@ -1589,29 +1591,29 @@ async def image_to_pdf_stream(job_id: str) -> StreamingResponse:
 @app.get("/api/image-to-pdf/jobs/{job_id}/download")
 async def image_to_pdf_download(job_id: str) -> FileResponse:
     if IMGPDF_STORE.get(job_id) is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+        raise HTTPException(status_code=404, detail=t("server.job_not_found"))
     path = IMGPDF_STORE.get_pdf(job_id)
     if path is None:
-        raise HTTPException(status_code=404, detail="PDF indisponivel para este job.")
-    return FileResponse(str(path), filename="documento.pdf", media_type="application/pdf")
+        raise HTTPException(status_code=404, detail=t("imgpdf.pdf_missing"))
+    return FileResponse(str(path), filename=t("imgpdf.pdf_filename"), media_type="application/pdf")
 
 
 @app.get("/api/image-to-pdf/jobs/{job_id}/preview")
 async def image_to_pdf_preview(job_id: str) -> FileResponse:
     if IMGPDF_STORE.get(job_id) is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+        raise HTTPException(status_code=404, detail=t("server.job_not_found"))
     path = IMGPDF_STORE.get_preview(job_id)
     if path is None:
-        raise HTTPException(status_code=404, detail="Preview indisponivel para este job.")
+        raise HTTPException(status_code=404, detail=t("imgpdf.preview_missing"))
     return FileResponse(str(path), media_type="image/png", content_disposition_type="inline")
 
 
 @app.post("/api/image-to-pdf/jobs/{job_id}/open-folder")
 async def image_to_pdf_open_folder(job_id: str) -> dict:
     if IMGPDF_STORE.get(job_id) is None:
-        raise HTTPException(status_code=404, detail="Job nao encontrado.")
+        raise HTTPException(status_code=404, detail=t("server.job_not_found"))
     if not IMGPDF_STORE.open_folder(job_id):
-        raise HTTPException(status_code=400, detail="Nao foi possivel abrir a pasta neste ambiente.")
+        raise HTTPException(status_code=400, detail=t("server.open_folder_failed"))
     return {"ok": True}
 
 
@@ -1625,7 +1627,7 @@ async def editor_import(
 ) -> dict:
     raw = await file.read()
     if not raw:
-        raise HTTPException(status_code=400, detail="Arquivo vazio.")
+        raise HTTPException(status_code=400, detail=t("server.file_empty"))
     name = (file.filename or "").lower()
 
     def work() -> dict:
@@ -1643,21 +1645,25 @@ async def editor_import(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Não consegui ler o arquivo: {exc}")
+        raise HTTPException(status_code=400, detail=t("editor.read_failed", error=exc))
+
+
+def _editor_disposition(extension: str) -> dict[str, str]:
+    return {"Content-Disposition": f'attachment; filename="{t("editor.filename")}.{extension}"'}
 
 
 @app.post("/api/editor/export")
 async def editor_export(payload: dict = Body(...)) -> Response:
     if not isinstance(payload, dict) or not payload.get("elements"):
-        raise HTTPException(status_code=400, detail="Envie elements no corpo.")
+        raise HTTPException(status_code=400, detail=t("editor.elements_missing"))
     try:
         data = await run_in_threadpool(imgpdf_editor.build_pdf, payload)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Falha ao gerar PDF: {exc}")
+        raise HTTPException(status_code=500, detail=t("editor.pdf_failed", error=exc))
     return Response(
         content=data,
         media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="documento-editado.pdf"'},
+        headers=_editor_disposition("pdf"),
     )
 
 
@@ -1665,7 +1671,7 @@ async def editor_export(payload: dict = Body(...)) -> Response:
 async def editor_render_html(payload: dict = Body(...)) -> Response:
     html = (payload or {}).get("html") if isinstance(payload, dict) else None
     if not html or not isinstance(html, str):
-        raise HTTPException(status_code=400, detail="Envie 'html' no corpo.")
+        raise HTTPException(status_code=400, detail=t("editor.html_missing"))
     try:
         data = await run_in_threadpool(imgpdf_editor.render_html_pdf, html)
     except Exception as exc:
@@ -1673,14 +1679,14 @@ async def editor_render_html(payload: dict = Body(...)) -> Response:
     return Response(
         content=data,
         media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="documento-editado.pdf"'},
+        headers=_editor_disposition("pdf"),
     )
 
 
 @app.post("/api/editor/render-png")
 async def editor_render_png(payload: dict = Body(...)) -> Response:
     if not isinstance(payload, dict) or not payload.get("html"):
-        raise HTTPException(status_code=400, detail="Envie 'html' no corpo.")
+        raise HTTPException(status_code=400, detail=t("editor.html_missing"))
     try:
         data = await run_in_threadpool(
             imgpdf_editor.render_html_png,
@@ -1694,7 +1700,7 @@ async def editor_render_png(payload: dict = Body(...)) -> Response:
     return Response(
         content=data,
         media_type="image/png",
-        headers={"Content-Disposition": 'attachment; filename="documento-editado.png"'},
+        headers=_editor_disposition("png"),
     )
 
 

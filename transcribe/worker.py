@@ -7,6 +7,7 @@ import queue
 import sys
 import threading
 
+from src.i18n import t, use_lang
 from transcribe import engine
 
 IDLE_SECONDS = float(os.environ.get("SHARPZ_WORKER_IDLE_S") or 300)
@@ -51,12 +52,13 @@ def handle(raw: str, cache: ModelCache) -> None:
     def emit_fn(event: dict) -> None:
         engine.emit({**event, "job_id": job_id})
 
-    try:
-        args = engine.args_from_dict({**(request.get("args") or {}), "job_id": job_id})
-    except (KeyError, TypeError, ValueError, SystemExit) as exc:
-        emit_fn({"type": "error", "message": f"Pedido inválido para o motor de transcrição: {exc}"})
-        return
-    failure = engine.run_job(args, emit_fn, cache.get)
+    with use_lang(request.get("lang")):
+        try:
+            args = engine.args_from_dict({**(request.get("args") or {}), "job_id": job_id})
+        except (KeyError, TypeError, ValueError, SystemExit) as exc:
+            emit_fn({"type": "error", "message": t("transcribe.bad_request", error=exc)})
+            return
+        failure = engine.run_job(args, emit_fn, cache.get)
     if failure is not None and engine.is_memory_error(failure):
         cache.clear()
 

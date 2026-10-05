@@ -38,28 +38,32 @@ from pymatting.preconditioner.ichol import ichol
 from rembg import remove
 from rembg.sessions import sessions_class
 
+from src.i18n import DEFAULT_LANG, t
 from src.memory import is_out_of_memory
 
 
-AVAILABLE_MODELS: dict[str, str] = {
-    "isnet-general-use": "ISNet (rápido)",
-    "birefnet-general-lite": "BiRefNet Lite (detalhado)",
-    "birefnet-general": "BiRefNet (qualidade máxima)",
-    "u2net": "U2Net (mais leve)",
-    "birefnet-portrait": "BiRefNet Retrato (pessoas)",
-    "u2net_human_seg": "U2Net Pessoas (leve)",
-    "sam": "Segment Anything (objeto central)",
-}
+MODEL_KEYS = (
+    "isnet-general-use",
+    "birefnet-general-lite",
+    "birefnet-general",
+    "u2net",
+    "birefnet-portrait",
+    "u2net_human_seg",
+    "sam",
+)
 
-MODEL_DETAILS: dict[str, str] = {
-    "isnet-general-use": "Leve e rápido: ~1,5 GB de RAM no pico, bom para a maioria das imagens (~180 MB).",
-    "birefnet-general-lite": "Recorte mais fino em cabelo e bordas, mas usa ~6 GB de RAM no pico e é bem mais lento (~220 MB).",
-    "birefnet-general": "Melhor recorte, mas o mais pesado: ~970 MB e muitos GB de RAM. Pode deixar o PC lento.",
-    "u2net": "O mais leve e rápido; recorte mais simples (~175 MB).",
-    "birefnet-portrait": "Especialista em pessoas e rostos. Pesado como o BiRefNet: ~970 MB e muitos GB de RAM.",
-    "u2net_human_seg": "Leve, focado em pessoas de corpo inteiro (~175 MB).",
-    "sam": "Recorta o objeto que está no centro da imagem.",
-}
+
+def model_label(model: str, lang: str | None = None) -> str:
+    return t(f"processor.model.{model}", lang) if model in MODEL_KEYS else model
+
+
+def model_detail(model: str, lang: str | None = None) -> str:
+    return t(f"processor.detail.{model}", lang) if model in MODEL_KEYS else ""
+
+
+AVAILABLE_MODELS: dict[str, str] = {key: model_label(key, DEFAULT_LANG) for key in MODEL_KEYS}
+
+MODEL_DETAILS: dict[str, str] = {key: model_detail(key, DEFAULT_LANG) for key in MODEL_KEYS}
 
 DEFAULT_MODEL = "isnet-general-use"
 HEAVY_MODELS = frozenset({"birefnet-general", "birefnet-portrait", "birefnet-general-lite"})
@@ -92,23 +96,20 @@ _idle_timer: threading.Timer | None = None
 
 def memory_message(model: str | None = None, alpha_matting: bool = False) -> str:
     if model is None:
-        return (
-            "Memória insuficiente para concluir a operação. "
-            "Feche outros programas ou use uma imagem menor e tente de novo."
-        )
+        return t("processor.memory.generic")
     rank = MODEL_WEIGHT_ORDER.index(model) if model in MODEL_WEIGHT_ORDER else -1
     lighter = [
-        AVAILABLE_MODELS[key]
+        model_label(key)
         for key in LIGHTER_MODELS
         if MODEL_WEIGHT_ORDER.index(key) > rank
     ][:2]
-    parts = [f"Memória insuficiente para rodar o modelo {AVAILABLE_MODELS.get(model, model)}."]
+    parts = [t("processor.memory.model", model=model_label(model))]
     if lighter:
-        parts.append(f"Feche outros programas ou escolha um modelo mais leve: {' ou '.join(lighter)}.")
+        parts.append(t("processor.memory.lighter", models=t("processor.memory.or").join(lighter)))
     else:
-        parts.append("Feche outros programas ou use uma imagem menor.")
+        parts.append(t("processor.memory.smaller"))
     if alpha_matting:
-        parts.append("Desligar o Alpha matting também reduz o uso de memória.")
+        parts.append(t("processor.memory.alpha"))
     return " ".join(parts)
 
 
@@ -202,7 +203,7 @@ def _session_class(model: str):
     for session_class in sessions_class:
         if session_class.name() == model:
             return session_class
-    raise ValueError(f"Modelo desconhecido: {model}")
+    raise ValueError(t("processor.unknown_model", model=model))
 
 
 def model_downloaded(model: str) -> bool:

@@ -9,6 +9,7 @@ import threading
 import time
 from pathlib import Path
 
+from src.i18n import t, use_lang
 from transcribe.ffmpeg_util import ensure_ffmpeg
 from transcribe.formats import write_all
 
@@ -64,13 +65,10 @@ def is_memory_error(exc: BaseException) -> bool:
 
 def describe_error(exc: BaseException, model: str | None = None) -> str:
     if is_memory_error(exc):
-        target = f"o modelo {model}" if model else "o modelo"
-        return (
-            f"Memória insuficiente para rodar {target}. "
-            "Feche programas pesados ou escolha um modelo menor e tente de novo."
-        )
+        target = t("transcribe.memory_target_model", model=model) if model else t("transcribe.memory_target")
+        return t("transcribe.memory", target=target)
     reason = str(exc).strip() or type(exc).__name__
-    return f"Falha na transcrição: {reason}"
+    return t("transcribe.failed", reason=reason)
 
 
 def speaker_label(raw: str | None) -> str | None:
@@ -79,8 +77,8 @@ def speaker_label(raw: str | None) -> str | None:
     text = str(raw)
     digits = "".join(ch for ch in text if ch.isdigit())
     if digits:
-        return f"Locutor {int(digits) + 1}"
-    return f"Locutor {text}"
+        return t("transcribe.speaker", name=int(digits) + 1)
+    return t("transcribe.speaker", name=text)
 
 
 def normalize_word(word: dict) -> dict:
@@ -222,10 +220,7 @@ def _diarize(whisperx, args, result: dict, audio, degraded: list[str], emit_fn) 
     hf_token = args.hf_token or os.environ.get("HF_TOKEN")
     if not hf_token:
         degraded.append("diarize")
-        emit_fn(stage_event(
-            "diarize", "skipped",
-            "Sem token do Hugging Face: informe o HF_TOKEN para separar os locutores.",
-        ))
+        emit_fn(stage_event("diarize", "skipped", t("transcribe.diarize_no_token")))
         return result
     try:
         try:
@@ -327,7 +322,7 @@ def run_job(args, emit_fn=emit, model_provider=None) -> BaseException | None:
     try:
         ensure_ffmpeg()
         if not Path(args.input).exists():
-            raise FileNotFoundError(f"Arquivo não encontrado: {args.input}")
+            raise FileNotFoundError(t("transcribe.file_missing", path=args.input))
         Path(args.out_dir).mkdir(parents=True, exist_ok=True)
 
         segments = None
@@ -337,7 +332,7 @@ def run_job(args, emit_fn=emit, model_provider=None) -> BaseException | None:
                 segments, info_dict = run_whisperx(args, degraded, emit_fn)
             except Exception as exc:
                 degraded.append("diarize")
-                emit_fn(stage_event("diarize", "skipped", f"whisperX indisponível: {exc}"))
+                emit_fn(stage_event("diarize", "skipped", t("transcribe.whisperx_unavailable", error=exc)))
                 segments = None
                 gc.collect()
 
@@ -408,7 +403,8 @@ def main(argv=None) -> int:
         from transcribe.jobs import resolve_model
 
         args.model = resolve_model(args.model, args.translate)
-    return 0 if run_job(args) is None else 1
+    with use_lang(os.environ.get("SHARPZ_ENGINE_LANG")):
+        return 0 if run_job(args) is None else 1
 
 
 if __name__ == "__main__":

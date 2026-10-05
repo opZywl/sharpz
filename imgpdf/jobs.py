@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 
 from imgpdf import pipeline as pipeline_mod
+from src.i18n import get_lang, t, use_lang
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_ROOT = REPO_ROOT / "output" / "pdf"
@@ -47,6 +48,7 @@ class JobStore:
             "options": options,
             "input_path": options.get("input_path"),
             "events": queue.Queue(),
+            "lang": get_lang(),
         }
         with self._lock:
             self._jobs[job_id] = job
@@ -104,7 +106,7 @@ class JobStore:
         with self._lock:
             job = self._jobs.get(job_id)
         if job is None:
-            yield "data: " + json.dumps({"type": "error", "message": "job nao encontrado"}, ensure_ascii=False) + "\n\n"
+            yield "data: " + json.dumps({"type": "error", "message": t("server.job_not_found")}, ensure_ascii=False) + "\n\n"
             return
         events: queue.Queue = job["events"]
         snapshot = self.get(job_id)
@@ -158,16 +160,22 @@ class JobStore:
                 if job is not None:
                     job["logs"].append({"level": event.get("level", "info"), "message": event.get("message", "")})
 
+    def _job_lang(self, job_id: str) -> str | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            return job.get("lang") if job else None
+
     def _run(self) -> None:
         while True:
             job_id = self._queue.get()
-            try:
-                self._process(job_id)
-            except Exception as exc:
-                self._set(job_id, status="error", stage="error", error=str(exc))
-                self._push(job_id, {"type": "error", "message": str(exc)})
-            finally:
-                self._close_stream(job_id)
+            with use_lang(self._job_lang(job_id)):
+                try:
+                    self._process(job_id)
+                except Exception as exc:
+                    self._set(job_id, status="error", stage="error", error=str(exc))
+                    self._push(job_id, {"type": "error", "message": str(exc)})
+                finally:
+                    self._close_stream(job_id)
 
     def _process(self, job_id: str) -> None:
         with self._lock:
@@ -176,7 +184,7 @@ class JobStore:
         if options is None:
             return
         if not options.get("input_path") or not Path(options["input_path"]).exists():
-            message = "Imagem de entrada indisponivel para este job."
+            message = t("imgpdf.input_missing")
             self._set(job_id, status="error", stage="error", error=message)
             self._push(job_id, {"type": "error", "message": message})
             return
@@ -225,7 +233,7 @@ def _public_view(job: dict) -> dict:
 
 def _final_event(snapshot: dict) -> dict:
     if snapshot["status"] == "error":
-        return {"type": "error", "message": snapshot.get("error") or "erro desconhecido"}
+        return {"type": "error", "message": snapshot.get("error") or t("imgpdf.unknown_error")}
     return {
         "type": "done",
         "manifest": snapshot.get("manifest"),

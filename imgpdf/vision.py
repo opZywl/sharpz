@@ -22,6 +22,8 @@ from typing import Callable
 
 from PIL import Image, ImageOps
 
+from src.i18n import t
+
 Emit = Callable[[dict], None]
 
 TILE_TARGET = 640
@@ -61,7 +63,7 @@ def _chat_vision(cfg: dict, data_uri: str, instruction: str, timeout: int = VISI
     base_url = (cfg.get("base_url") or "").strip().rstrip("/")
     model = (cfg.get("model") or "").strip()
     if not base_url or not model:
-        raise RuntimeError("Vision LLM sem base_url/model configurados.")
+        raise RuntimeError(t("imgpdf.vision.not_configured"))
     body = {
         "model": model,
         "messages": [
@@ -95,13 +97,13 @@ def _chat_vision(cfg: dict, data_uri: str, instruction: str, timeout: int = VISI
             detail = exc.read().decode("utf-8", errors="replace")
         except Exception:
             detail = ""
-        raise RuntimeError(f"Vision LLM em {base_url} respondeu {exc.code}. {detail}".strip())
+        raise RuntimeError(t("imgpdf.vision.http_error", url=base_url, code=exc.code, detail=detail).strip())
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"Nao consegui falar com o Vision LLM em {base_url} ({exc.reason}).")
+        raise RuntimeError(t("imgpdf.vision.unreachable", url=base_url, reason=exc.reason))
     try:
         return data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError):
-        raise RuntimeError("Resposta do Vision LLM em formato inesperado (sem choices/message).")
+        raise RuntimeError(t("imgpdf.vision.bad_response"))
 
 
 def _parse_blocks(raw: str) -> list[dict]:
@@ -245,10 +247,10 @@ def _read_vision_pass(img: Image.Image, cfg: dict, emit: Emit, label: str) -> li
             parsed = _parse_blocks(raw)
             blocks.extend(_to_px(parsed, tile))
             emit({"type": "log", "level": "info",
-                  "message": f"{label}: regiao {idx}/{len(tiles)} -> {len(parsed)} blocos"})
+                  "message": t("imgpdf.vision.region_ok", label=label, index=idx, total=len(tiles), blocks=len(parsed))})
         except Exception as exc:
             emit({"type": "log", "level": "warn",
-                  "message": f"{label}: regiao {idx}/{len(tiles)} falhou ({exc})"})
+                  "message": t("imgpdf.vision.region_failed", label=label, index=idx, total=len(tiles), error=exc)})
     return _dedupe(blocks)
 
 
@@ -308,7 +310,7 @@ def _reconcile(a_blocks: list[dict], b_blocks: list[dict], img: Image.Image, cfg
             if _norm(chosen) != _norm(a["text"]):
                 corrections += 1
                 emit({"type": "log", "level": "ok",
-                      "message": f"verificacao: '{a['text'][:40]}' -> '{chosen[:40]}'"})
+                      "message": t("imgpdf.vision.correction", before=a["text"][:40], after=chosen[:40])})
             result.append({"text": chosen, "bbox": a["bbox"]})
         else:
             result.append(a)
@@ -316,7 +318,7 @@ def _reconcile(a_blocks: list[dict], b_blocks: list[dict], img: Image.Image, cfg
         if j not in used:
             result.append(b)
     emit({"type": "log", "level": "info",
-          "message": f"verificacao: {corrections} correcao(oes), {len(result)} blocos finais"})
+          "message": t("imgpdf.vision.verified", corrections=corrections, blocks=len(result))})
     return _dedupe(result)
 
 
@@ -346,13 +348,13 @@ def _tesseract_langs() -> str:
 def _read_tesseract(img: Image.Image, emit: Emit) -> list[dict]:
     exe = shutil.which("tesseract")
     if not exe:
-        raise RuntimeError("Tesseract nao encontrado no PATH.")
+        raise RuntimeError(t("imgpdf.tesseract.not_found"))
     work = img.convert("RGB")
     gray = work.convert("L")
     mean = sum(gray.getdata()) / max(1, gray.width * gray.height)
     if mean < 110:
         work = ImageOps.invert(work)
-        emit({"type": "log", "level": "info", "message": "tesseract: imagem escura -> invertida p/ OCR"})
+        emit({"type": "log", "level": "info", "message": t("imgpdf.tesseract.inverted")})
     scale = 2
     work = work.resize((work.width * scale, work.height * scale), Image.LANCZOS)
     langs = _tesseract_langs()
@@ -389,7 +391,7 @@ def _read_tesseract(img: Image.Image, emit: Emit) -> list[dict]:
         if not text:
             continue
         blocks.append({"text": text, "bbox": [slot["x0"] / scale, slot["y0"] / scale, slot["x1"] / scale, slot["y1"] / scale]})
-    emit({"type": "log", "level": "info", "message": f"tesseract ({langs}): {len(blocks)} linhas"})
+    emit({"type": "log", "level": "info", "message": t("imgpdf.tesseract.lines", langs=langs, count=len(blocks))})
     return blocks
 
 
@@ -406,22 +408,22 @@ def read_image(image_path: str | Path, options: dict, emit: Emit) -> dict:
 
     use_vision = engine == "vision" or (engine == "auto" and has_vision)
     if use_vision and not has_vision:
-        raise RuntimeError("Motor 'vision' selecionado mas Vision LLM nao foi configurado (base_url/model).")
+        raise RuntimeError(t("imgpdf.vision.required"))
 
     if use_vision:
         try:
             emit({"type": "stage", "stage": "transcrever"})
-            blocks = _read_vision_pass(img, cfg, emit, "leitura 1")
+            blocks = _read_vision_pass(img, cfg, emit, t("imgpdf.vision.pass", number=1))
             if verify:
                 emit({"type": "stage", "stage": "verificar"})
-                b2 = _read_vision_pass(img, cfg, emit, "leitura 2")
+                b2 = _read_vision_pass(img, cfg, emit, t("imgpdf.vision.pass", number=2))
                 blocks = _reconcile(blocks, b2, img, cfg, emit)
             if blocks:
                 return {"blocks": blocks, "engine": "vision", "degraded": degraded}
-            emit({"type": "log", "level": "warn", "message": "Vision nao retornou texto; tentando Tesseract."})
+            emit({"type": "log", "level": "warn", "message": t("imgpdf.vision.empty")})
             degraded.append("vision-vazio")
         except Exception as exc:
-            emit({"type": "log", "level": "warn", "message": f"Vision falhou ({exc}); tentando Tesseract."})
+            emit({"type": "log", "level": "warn", "message": t("imgpdf.vision.failed", error=exc)})
             if engine == "vision":
                 raise
             degraded.append("vision")
@@ -433,8 +435,7 @@ def read_image(image_path: str | Path, options: dict, emit: Emit) -> dict:
             return {"blocks": blocks, "engine": "tesseract", "degraded": degraded}
         degraded.append("tesseract-vazio")
     else:
-        emit({"type": "log", "level": "warn",
-              "message": "Tesseract ausente. Instale em 'Baixar pacotes'. PDF sai sem camada de texto."})
+        emit({"type": "log", "level": "warn", "message": t("imgpdf.tesseract.absent")})
         degraded.append("sem-ocr")
 
     return {"blocks": [], "engine": "nenhum", "degraded": degraded}

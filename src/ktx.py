@@ -22,6 +22,7 @@ Module sits alongside background removal -independente, sem deps cruzadas.
 
 from __future__ import annotations
 
+import contextvars
 import os
 import shutil
 import subprocess
@@ -30,6 +31,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Optional
+
+from src.i18n import t
 
 
 # Presets em qualidade MAXIMA -diferente do yzy/scripts/compress.js
@@ -162,34 +165,24 @@ def find_toktx() -> Optional[str]:
 
 def install_hint() -> str:
     """Mensagem amigavel pra usuario quando toktx ausente."""
-    return (
-        "toktx nao encontrado no PATH.\n"
-        "\n"
-        "Instale o KTX-Software (CLI 'toktx'):\n"
-        "  Windows: https://github.com/KhronosGroup/KTX-Software/releases\n"
-        "           Baixe o .exe installer (KTX-Software-X.X.X-Windows-x64.exe)\n"
-        "           Marque 'Add to PATH' durante instalacao.\n"
-        "  Linux:   sudo apt install ktx-tools  (Ubuntu 24.04+)\n"
-        "           OU build do source com cmake + ASTC encoder.\n"
-        "  Mac:     brew install ktx\n"
-        "\n"
-        "Verifique com: toktx --version\n"
-        "Esperado: toktx vX.Y.Z ou similar."
-    )
+    return t("ktx.install_hint")
+
+
+PRESET_ORDER = (
+    "ultra",
+    "ultra_rgba",
+    "default",
+    "srgb_genmipmap",
+    "linear_red_mask",
+    "uastc_red_mask",
+    "career_rg",
+    "uastc_genmipmap_linear",
+)
 
 
 def list_presets() -> list[tuple[str, str]]:
     """Lista presets pra UI dropdown -(key, descricao curta)."""
-    return [
-        ("ultra", "[*] ULTRA - UASTC q4 + zcmp22 + mipmaps (DEFAULT, max qualidade)"),
-        ("ultra_rgba", "[*] ULTRA RGBA - igual ultra + alpha channel preservado"),
-        ("default", "ETC1S sRGB RGB qmax -projeto screenshots (lossy mas leve)"),
-        ("srgb_genmipmap", "UASTC q3 sRGB + mipmaps -palette/atlas balanceado"),
-        ("linear_red_mask", "ETC1S R linear -mascara single-channel (alpha, glow)"),
-        ("uastc_red_mask", "UASTC q4 R linear -mascara critica smooth gradients"),
-        ("career_rg", "UASTC q4 sRGB RG -texto career stones nitido"),
-        ("uastc_genmipmap_linear", "UASTC q4 linear + mipmaps -terrain/normal map"),
-    ]
+    return [(key, t(f"ktx.preset.{key}")) for key in PRESET_ORDER]
 
 
 def _has_alpha(image_path: Path) -> bool:
@@ -330,22 +323,22 @@ def convert_file(
 
     if not input_path.exists():
         return ConversionResult(input_path, output_path, False,
-                                error=f"input nao existe: {input_path}")
+                                error=t("ktx.error.input_missing", path=input_path))
 
     if input_path.suffix.lower() not in SUPPORTED_INPUT_EXT:
         return ConversionResult(input_path, output_path, False,
-                                error=f"extensao nao suportada: {input_path.suffix} (use png/jpg)")
+                                error=t("ktx.error.extension", suffix=input_path.suffix))
 
     if output_path.exists() and not overwrite:
         return ConversionResult(input_path, output_path, False,
-                                error=f"output ja existe (passe overwrite=True): {output_path}")
+                                error=t("ktx.error.output_exists", path=output_path))
 
     if auto_preset:
         preset = auto_pick_preset(input_path)
 
     if preset not in PRESETS:
         return ConversionResult(input_path, output_path, False,
-                                error=f"preset desconhecido '{preset}'. Disponiveis: {list(PRESETS.keys())}")
+                                error=t("ktx.error.preset", preset=preset, presets=list(PRESETS.keys())))
 
     toktx = find_toktx()
     if toktx is None:
@@ -376,13 +369,13 @@ def convert_file(
     except subprocess.TimeoutExpired:
         return ConversionResult(
             input_path, output_path, False,
-            size_input=size_input, error="A conversão KTX passou de 5 min (imagem grande demais para este preset?)",
+            size_input=size_input, error=t("ktx.error.timeout"),
             preprocessed=preprocessed, pre_size=pre_size, final_size=final_size,
         )
     except Exception as e:
         return ConversionResult(
             input_path, output_path, False,
-            size_input=size_input, error=f"erro inesperado: {e}",
+            size_input=size_input, error=t("ktx.error.unexpected", error=e),
             preprocessed=preprocessed, pre_size=pre_size, final_size=final_size,
         )
     finally:
@@ -401,7 +394,7 @@ def convert_file(
         return ConversionResult(
             input_path, output_path, False,
             size_input=size_input, duration_ms=duration_ms,
-            error=f"A conversão KTX falhou (código {proc.returncode}):\n{(proc.stderr or proc.stdout)[:500]}",
+            error=t("ktx.error.exit_code", code=proc.returncode, output=(proc.stderr or proc.stdout)[:500]),
             encoder_log=encoder_log,
             preprocessed=preprocessed, pre_size=pre_size, final_size=final_size,
         )
@@ -410,7 +403,7 @@ def convert_file(
         return ConversionResult(
             input_path, output_path, False,
             size_input=size_input, duration_ms=duration_ms,
-            error=f"A conversão KTX terminou, mas o arquivo não foi criado: {output_path}",
+            error=t("ktx.error.not_created", path=output_path),
             encoder_log=encoder_log,
             preprocessed=preprocessed, pre_size=pre_size, final_size=final_size,
         )
@@ -507,6 +500,7 @@ def batch_convert(
         for idx, input_path in enumerate(inputs_list):
             output_path = _resolve_output(input_path)
             future = pool.submit(
+                contextvars.copy_context().run,
                 convert_file,
                 input_path, output_path,
                 preset=preset, overwrite=overwrite,
@@ -522,7 +516,7 @@ def batch_convert(
             except Exception as e:
                 result = ConversionResult(
                     inputs_list[idx], _resolve_output(inputs_list[idx]),
-                    False, error=f"falha inesperada: {e}",
+                    False, error=t("ktx.error.crashed", error=e),
                 )
             results[idx] = result
             completed += 1
@@ -538,7 +532,7 @@ def batch_convert(
 def summarize(results: list[ConversionResult]) -> str:
     """Texto resumo de uma run pra exibir em CLI/UI."""
     if not results:
-        return "Nenhuma imagem processada."
+        return t("ktx.summary.none")
 
     ok = [r for r in results if r.success]
     fail = [r for r in results if not r.success]
@@ -550,14 +544,19 @@ def summarize(results: list[ConversionResult]) -> str:
     total_ms = sum(r.duration_ms for r in ok)
 
     lines = [
-        f"[OK]{len(ok)} sucesso  ·  [X]{len(fail)} falha  ·  total: {len(results)}",
+        t("ktx.summary.counts", ok=len(ok), fail=len(fail), total=len(results)),
     ]
     if ok:
         lines.append(
-            f"tamanho: {total_in / 1024 / 1024:.1f} MB -> {total_out / 1024 / 1024:.1f} MB  "
-            f"({ratio:.1f}x menor, economia {saved_mb:.1f} MB)"
+            t(
+                "ktx.summary.size",
+                before=total_in / 1024 / 1024,
+                after=total_out / 1024 / 1024,
+                ratio=ratio,
+                saved=saved_mb,
+            )
         )
-        lines.append(f"tempo total: {total_ms / 1000:.1f}s ({total_ms // max(len(ok), 1)}ms/img medio)")
+        lines.append(t("ktx.summary.time", seconds=total_ms / 1000, per_image=total_ms // max(len(ok), 1)))
 
         # Quality stats se algum tiver PSNR
         psnrs = [r.psnr for r in ok if r.psnr is not None]
@@ -565,17 +564,17 @@ def summarize(results: list[ConversionResult]) -> str:
             avg_psnr = sum(psnrs) / len(psnrs)
             min_psnr = min(psnrs)
             grade = "A+" if avg_psnr >= 45 else "A" if avg_psnr >= 40 else "B" if avg_psnr >= 36 else "C"
-            lines.append(f"qualidade: PSNR medio {avg_psnr:.1f} dB (min {min_psnr:.1f}), grade {grade}")
+            lines.append(t("ktx.summary.quality", average=avg_psnr, minimum=min_psnr, grade=grade))
 
         # Pre-processing stats
         pre_count = sum(1 for r in ok if r.preprocessed)
         if pre_count:
-            lines.append(f"alinhadas: {pre_count} imagem(ns) completadas para múltiplo de 4")
+            lines.append(t("ktx.summary.aligned", count=pre_count))
 
     if fail:
-        lines.append("\nfalhas:")
+        lines.append(t("ktx.summary.failures"))
         for r in fail:
-            err_first = (r.error or "").splitlines()[0] if r.error else "erro"
+            err_first = (r.error or "").splitlines()[0] if r.error else t("ktx.summary.error")
             lines.append(f"  [X]{r.input_path.name}: {err_first}")
 
     return "\n".join(lines)

@@ -15,6 +15,7 @@ import uuid
 from collections import deque
 from pathlib import Path
 
+from src.i18n import get_lang, t, use_lang
 from transcribe import complete as complete_mod
 from transcribe.formats import to_txt
 
@@ -354,24 +355,18 @@ def _parse_event(raw: str) -> dict | None:
 
 
 def _spawn_failed(exc: OSError) -> JobFailed:
-    return JobFailed(
-        f"Não consegui iniciar o motor de transcrição ({exc}). "
-        "Confira se o whisper-venv está instalado (rode o sharpz.cmd e escolha Instalar)."
-    )
+    return JobFailed(t("transcribe.spawn_failed", error=exc))
 
 
 def _engine_died(payload: dict) -> str:
     code = payload.get("code")
-    message = "O motor de transcrição fechou no meio do trabalho"
+    message = t("transcribe.engine_died")
     if code is not None:
-        message += f" (código {code})"
-    message += (
-        ". Isso costuma ser falta de memória: feche programas pesados e tente de novo. "
-        "O próximo envio abre um motor novo."
-    )
+        message += t("transcribe.engine_died_code", code=code)
+    message += t("transcribe.engine_died_hint")
     detail = payload.get("detail")
     if detail:
-        message += f" Detalhe: {detail}"
+        message += t("transcribe.detail", detail=detail)
     return message
 
 
@@ -432,7 +427,7 @@ class WorkerClient:
         _kill(proc)
 
     def run(self, job_id: str, args: dict, on_event, is_stopped) -> tuple[str, dict]:
-        request = json.dumps({"type": "job", "job_id": job_id, "args": args}) + "\n"
+        request = json.dumps({"type": "job", "job_id": job_id, "args": args, "lang": get_lang()}) + "\n"
         last = {"code": None, "detail": ""}
         for _attempt in range(2):
             try:
@@ -524,6 +519,7 @@ class JobStore:
                 "closed": False,
                 "fingerprint": fingerprint,
                 "proc": None,
+                "lang": get_lang(),
             }
             self._jobs[job_id] = job
             self._pending.append(job_id)
@@ -707,10 +703,12 @@ class JobStore:
                     continue
                 job["status"] = "running"
                 job["stage"] = "start"
-            try:
-                self._process(job_id)
-            except Exception as exc:
-                self._finish(job_id, "error", error=f"Erro inesperado na transcrição: {exc}")
+                lang = job.get("lang")
+            with use_lang(lang):
+                try:
+                    self._process(job_id)
+                except Exception as exc:
+                    self._finish(job_id, "error", error=t("transcribe.unexpected", error=exc))
 
     def _process(self, job_id: str) -> None:
         with self._lock:
@@ -732,7 +730,7 @@ class JobStore:
                         job["options"]["input_path"] = input_path
                 options["input_path"] = input_path
             if not input_path:
-                raise JobFailed("Nenhuma fonte de áudio disponível para este job.")
+                raise JobFailed(t("transcribe.no_audio"))
             result = self._transcribe(job_id, _engine_args(options, input_path, out_dir, job_id), options)
             files = result.get("files") or {}
             if options.get("mode") == "complete":
@@ -747,7 +745,7 @@ class JobStore:
             self._finish(
                 job_id,
                 "error",
-                error=f"Erro inesperado na transcrição: {exc}",
+                error=t("transcribe.unexpected", error=exc),
                 elapsed=round(time.perf_counter() - started, 2),
             )
         finally:
@@ -771,7 +769,7 @@ class JobStore:
         if kind == "canceled" or self._stopped(job_id):
             raise JobCanceled()
         if kind == "error":
-            raise JobFailed(payload.get("message") or "O motor de transcrição falhou sem detalhar o erro.")
+            raise JobFailed(payload.get("message") or t("transcribe.engine_failed"))
         if kind != "done":
             raise JobFailed(_engine_died(payload))
         with self._lock:
@@ -785,12 +783,15 @@ class JobStore:
 
     def _run_engine(self, job_id: str, args: dict, options: dict) -> dict:
         token = options.get("hf_token") or _load_hf_token()
+        env_extra = {"SHARPZ_ENGINE_LANG": get_lang()}
+        if token:
+            env_extra["HF_TOKEN"] = token
         try:
             proc, pump = _spawn(
                 self.engine_cmd + engine_argv(args),
                 self.log_path,
                 f"engine {job_id[:8]}",
-                env_extra={"HF_TOKEN": token} if token else None,
+                env_extra=env_extra,
             )
         except OSError as exc:
             raise _spawn_failed(exc) from exc
@@ -830,7 +831,7 @@ class JobStore:
         try:
             proc, pump = _spawn(argv, self.log_path, f"yt-dlp {job_id[:8]}")
         except OSError as exc:
-            raise JobFailed(f"Não consegui iniciar o yt-dlp: {exc}") from exc
+            raise JobFailed(t("transcribe.ytdlp_failed", error=exc)) from exc
         self._attach(job_id, proc)
         last_pct = -1.0
         try:
@@ -849,14 +850,14 @@ class JobStore:
         self._check_stopped(job_id)
         if code != 0:
             detail = pump.last_line() if pump else ""
-            message = "Falha ao baixar o áudio da URL. Verifique se o link é válido e acessível."
-            raise JobFailed(f"{message} Detalhe: {detail}" if detail else message)
+            message = t("transcribe.download_failed")
+            raise JobFailed(message + t("transcribe.detail", detail=detail) if detail else message)
         candidates = sorted(
             path for path in out_dir.glob("source.*")
             if path.is_file() and path.suffix.lower() not in PARTIAL_SUFFIXES
         )
         if not candidates:
-            raise JobFailed("O download terminou, mas o arquivo de áudio não foi encontrado.")
+            raise JobFailed(t("transcribe.download_missing"))
         self._handle_event(job_id, {"type": "stage", "stage": "download", "status": "done", "detail": ""})
         return candidates[0]
 
@@ -973,14 +974,14 @@ class ModelDownloads:
             if state and state["status"] == "running":
                 return "running"
             if self._command is None and not VENV_PYTHON.exists():
-                raise RuntimeError("O motor de transcrição não está instalado. Rode o sharpz.cmd, escolha Instalar e tente de novo.")
+                raise RuntimeError(t("transcribe.engine_missing"))
             argv = self._command(key) if self._command else [VENV_PYTHON, DOWNLOAD_SCRIPT, key]
             proc, _pump = _spawn(argv, self._log_path, f"download {key}", merge=True)
             self._state[key] = {"status": "running", "error": None}
-        threading.Thread(target=self._watch, args=(key, proc), daemon=True).start()
+        threading.Thread(target=self._watch, args=(key, proc, get_lang()), daemon=True).start()
         return "running"
 
-    def _watch(self, key: str, proc) -> None:
+    def _watch(self, key: str, proc, lang: str | None = None) -> None:
         tail: deque[str] = deque(maxlen=5)
         try:
             for line in proc.stdout:
@@ -994,10 +995,10 @@ class ModelDownloads:
         if code == 0 and model_cached(key, self._hub):
             state = {"status": "done", "error": None}
         elif code == 0:
-            state = {"status": "error", "error": "O download terminou, mas o modelo não apareceu no cache do Hugging Face."}
+            state = {"status": "error", "error": t("transcribe.model_not_cached", lang)}
         else:
-            detail = f" Detalhe: {tail[-1]}" if tail else ""
-            state = {"status": "error", "error": f"Falha ao baixar o modelo {key}.{detail}"}
+            detail = t("transcribe.detail", lang, detail=tail[-1]) if tail else ""
+            state = {"status": "error", "error": t("transcribe.model_download_failed", lang, key=key, detail=detail)}
         with self._lock:
             self._state[key] = state
 
@@ -1047,7 +1048,7 @@ def _terminal_event(job: dict) -> dict:
     if job["status"] == "canceled":
         return {"type": "canceled"}
     if job["status"] == "error":
-        return {"type": "error", "message": job.get("error") or "Erro desconhecido na transcrição."}
+        return {"type": "error", "message": job.get("error") or t("transcribe.unknown_error", job.get("lang"))}
     return {
         "type": "done",
         "files": dict(job["files"]),

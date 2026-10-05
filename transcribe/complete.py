@@ -13,6 +13,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
+from src.i18n import t
 from transcribe import formats
 from transcribe.ffmpeg_util import ffmpeg_exe
 
@@ -176,15 +177,20 @@ def write_transcripts(out_dir: Path, segments: list[dict], info: dict) -> list[s
 
     corrido = " ".join((s.get("text") or "").strip() for s in segments if (s.get("text") or "").strip())
     lines = [
-        "TRANSCRICAO COMPLETA",
-        f"Idioma: {info.get('language')} | Duracao: {round(float(info.get('duration') or 0.0), 1)}s | Modelo: {info.get('model')}",
+        t("complete.transcript.title"),
+        t(
+            "complete.transcript.meta",
+            language=info.get("language"),
+            duration=round(float(info.get("duration") or 0.0), 1),
+            model=info.get("model"),
+        ),
         "=" * 72,
         "",
-        "TEXTO CORRIDO",
+        t("complete.transcript.text"),
         "-" * 72,
         corrido,
         "",
-        "SEGMENTOS COM TEMPOS",
+        t("complete.transcript.segments"),
         "-" * 72,
     ]
     for s in segments:
@@ -223,42 +229,22 @@ def _image_data_uri(path: Path, width: int = DOC_IMAGE_WIDTH) -> str | None:
         return None
 
 
-_DOC_SYSTEM = (
-    "Voce e um analista que assiste a uma GRAVACAO DE TELA (a fala e curta, o conteudo esta na "
-    "imagem) e documenta a funcionalidade mostrada para que um time a reconstrua. Escreva SEMPRE "
-    "em PORTUGUES do Brasil, tom claro e pratico, focando em beleza, praticidade e informacao. "
-    "Voce recebe: a transcricao do audio, um contact sheet numerado (visao geral) e as imagens de "
-    "cena (cada uma e uma tela/etapa do fluxo). Produza tres documentos markdown: README (indice "
-    "curto), FEEDBACK (passo a passo do fluxo com tabela de etapas, dados vistos e o que construir) "
-    "e SPEC (especificacao tecnica: campos, calculos, telas, modelo de dados, fases). Nos markdowns, "
-    "referencie as imagens pelo new_name que voce escolher (ex: ![etapa](imagens/03-modal.jpg)).\n"
-    "Responda APENAS com um objeto JSON valido (sem markdown, sem cercas ```), com as chaves: "
-    "slug (kebab-case curto), title, images (lista de {file, new_name, caption}; file e o nome "
-    "original tipo 'cena_001.jpg', new_name e um nome descritivo tipo '03-modal-xyz.jpg' com prefixo "
-    "numerico), readme (string markdown), feedback (string markdown), spec (string markdown)."
-)
-
-
 def generate_docs(out_dir: Path, scenes: list[Path], contact_sheets: list[str], transcript_text: str, vision: dict, emit: Emit) -> dict:
     base_url = (vision.get("base_url") or "").strip().rstrip("/")
     model = (vision.get("model") or "").strip()
     if not base_url or not model:
-        raise RuntimeError("Vision LLM sem base_url/model configurados.")
+        raise RuntimeError(t("imgpdf.vision.not_configured"))
 
     content: list[dict] = [{
         "type": "text",
-        "text": (
-            "TRANSCRICAO DO AUDIO:\n" + (transcript_text or "(sem fala)") +
-            "\n\nA seguir, o contact sheet numerado (visao geral) e as imagens de cena na ordem do fluxo. "
-            "Use-as para entender e documentar a funcionalidade."
-        ),
+        "text": t("complete.docs.transcript", text=transcript_text or t("complete.no_speech")),
     }]
 
     overview = out_dir / (contact_sheets[-1] if contact_sheets else "")
     if contact_sheets and overview.exists():
         uri = _image_data_uri(overview, width=1100)
         if uri:
-            content.append({"type": "text", "text": "Contact sheet (visao geral, frames numerados):"})
+            content.append({"type": "text", "text": t("complete.docs.contact_sheet")})
             content.append({"type": "image_url", "image_url": {"url": uri}})
 
     sent = scenes[:DOC_MAX_IMAGES]
@@ -266,13 +252,13 @@ def generate_docs(out_dir: Path, scenes: list[Path], contact_sheets: list[str], 
         uri = _image_data_uri(scene)
         if not uri:
             continue
-        content.append({"type": "text", "text": f"Imagem: {scene.name}"})
+        content.append({"type": "text", "text": t("complete.docs.image", name=scene.name)})
         content.append({"type": "image_url", "image_url": {"url": uri}})
 
     body = {
         "model": model,
         "messages": [
-            {"role": "system", "content": _DOC_SYSTEM},
+            {"role": "system", "content": t("complete.docs.prompt")},
             {"role": "user", "content": content},
         ],
         "temperature": 0.4,
@@ -297,14 +283,14 @@ def generate_docs(out_dir: Path, scenes: list[Path], contact_sheets: list[str], 
             detail = exc.read().decode("utf-8", errors="replace")
         except Exception:
             detail = ""
-        raise RuntimeError(f"Vision LLM em {base_url} respondeu {exc.code}. {detail}".strip())
+        raise RuntimeError(t("imgpdf.vision.http_error", url=base_url, code=exc.code, detail=detail).strip())
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"Nao consegui falar com o Vision LLM em {base_url} ({exc.reason}).")
+        raise RuntimeError(t("imgpdf.vision.unreachable", url=base_url, reason=exc.reason))
 
     try:
         raw = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError):
-        raise RuntimeError("Resposta do Vision LLM em formato inesperado (sem choices/message).")
+        raise RuntimeError(t("imgpdf.vision.bad_response"))
 
     parsed = _parse_json_blob(raw)
     docs_written = _write_docs_from_parsed(out_dir, parsed, sent)
@@ -324,7 +310,7 @@ def _parse_json_blob(raw: str) -> dict:
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
         return json.loads(text[start:end + 1])
-    raise RuntimeError("Vision LLM nao retornou JSON parseavel.")
+    raise RuntimeError(t("imgpdf.vision.bad_json"))
 
 
 def _write_docs_from_parsed(out_dir: Path, parsed: dict, scenes: list[Path]) -> list[str]:
@@ -356,18 +342,18 @@ def _write_docs_from_parsed(out_dir: Path, parsed: dict, scenes: list[Path]) -> 
 
 def _fallback_readme(out_dir: Path, transcript_text: str, scenes: list[Path]) -> list[str]:
     lines = [
-        "# Pacote Complete (sem docs de IA)",
+        t("complete.readme.title"),
         "",
-        "Os docs analiticos (FEEDBACK/SPEC) nao foram gerados (Vision LLM desligado ou indisponivel).",
-        "Abaixo o indice do que foi extraido automaticamente.",
+        t("complete.readme.missing"),
+        t("complete.readme.index"),
         "",
-        "- `transcricao-completa.txt` / `.srt` / `.vtt` / `.json` — transcricao",
-        "- `frames-todos/` — frames (1 a cada N s) + contact sheets",
-        f"- `imagens/` — {len(scenes)} frames-chave por deteccao de cena",
+        t("complete.readme.transcripts"),
+        t("complete.readme.frames"),
+        t("complete.readme.images", count=len(scenes)),
         "",
-        "## Transcricao (texto corrido)",
+        t("complete.readme.text"),
         "",
-        transcript_text or "(sem fala)",
+        transcript_text or t("complete.no_speech"),
     ]
     (out_dir / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return ["README.md"]
@@ -426,7 +412,7 @@ def run(job_id: str, input_path: Path, out_dir: Path, segments: list[dict], info
 
     ff = ffmpeg_exe()
     if not ff:
-        stage("complete", "skipped", detail="ffmpeg indisponivel")
+        stage("complete", "skipped", detail=t("complete.ffmpeg_missing"))
         degraded.append("complete")
         return {"degraded": degraded, "docs_generated": False}
 
@@ -447,7 +433,7 @@ def run(job_id: str, input_path: Path, out_dir: Path, segments: list[dict], info
         progress(0.15, "frames")
         try:
             frames = extract_frames(ff, input_path, out_dir, float(options.get("frame_interval") or 3.0))
-            stage("frames", "done", detail=f"{len(frames)} frames")
+            stage("frames", "done", detail=t("complete.frames", count=len(frames)))
         except Exception as exc:
             degraded.append("frames")
             stage("frames", "skipped", detail=str(exc))
@@ -466,13 +452,13 @@ def run(job_id: str, input_path: Path, out_dir: Path, segments: list[dict], info
             progress(0.45, "cenas")
             try:
                 scenes = detect_scenes(ff, input_path, out_dir, float(options.get("scene_threshold") or 0.30), frames)
-                stage("cenas", "done", detail=f"{len(scenes)} cenas")
+                stage("cenas", "done", detail=t("complete.scenes", count=len(scenes)))
             except Exception as exc:
                 degraded.append("cenas")
                 stage("cenas", "skipped", detail=str(exc))
     else:
         degraded.append("frames")
-        stage("frames", "skipped", detail="entrada sem video")
+        stage("frames", "skipped", detail=t("complete.no_video"))
 
     stage("transcricao", "start")
     progress(0.55, "transcricao")
