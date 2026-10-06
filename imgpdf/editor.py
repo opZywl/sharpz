@@ -6,7 +6,9 @@ Editor do dashboard, onde cada texto vira uma caixa arrastavel/editavel.
 from __future__ import annotations
 
 import base64
+import math
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -28,6 +30,22 @@ def _find_chrome() -> str | None:
     return shutil.which("chrome") or shutil.which("chrome.exe") or shutil.which("google-chrome")
 
 
+_LOCKDOWN = [
+    "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE fonts.googleapis.com, EXCLUDE fonts.gstatic.com",
+]
+_CSP = (
+    "<meta http-equiv=\"Content-Security-Policy\" content=\"script-src 'none'; object-src 'none'; "
+    "frame-src 'none'; base-uri 'none'; form-action 'none'\">"
+)
+_PROLOGUE = re.compile(r"\A\ufeff?[\t\n\f\r ]*<!doctype[^>]*>", re.IGNORECASE)
+
+
+def _locked_html(html: str) -> str:
+    m = _PROLOGUE.match(html)
+    end = m.end() if m else 0
+    return html[:end] + _CSP + html[end:]
+
+
 def render_html_pdf(html: str) -> bytes:
     """Renderiza um HTML completo (A4) em PDF via Chrome headless. Honra fontes web,
     icones e estilos exatamente como na tela do editor (WYSIWYG)."""
@@ -37,10 +55,10 @@ def render_html_pdf(html: str) -> bytes:
     with tempfile.TemporaryDirectory() as tmp:
         hp = Path(tmp) / "doc.html"
         op = Path(tmp) / "out.pdf"
-        hp.write_text(html, encoding="utf-8")
+        hp.write_text(_locked_html(html), encoding="utf-8")
         url = "file:///" + str(hp).replace("\\", "/")
         subprocess.run(
-            [chrome, "--headless", "--disable-gpu", "--no-sandbox", "--no-pdf-header-footer",
+            [chrome, "--headless", "--disable-gpu", "--no-sandbox", *_LOCKDOWN, "--no-pdf-header-footer",
              "--virtual-time-budget=3500", f"--print-to-pdf={op}", url],
             timeout=90, capture_output=True,
         )
@@ -54,16 +72,18 @@ def render_html_png(html: str, page_w: float, page_h: float, scale: int = 2) -> 
     chrome = _find_chrome()
     if not chrome:
         raise RuntimeError(t("editor.chrome_missing_png"))
+    page_w = min(14400.0, max(1.0, page_w)) if math.isfinite(page_w) else A4[0]
+    page_h = min(14400.0, max(1.0, page_h)) if math.isfinite(page_h) else A4[1]
     w_px = max(1, round(page_w * 4 / 3))
     h_px = max(1, round(page_h * 4 / 3))
     scale = 1 if scale < 1 else 3 if scale > 3 else int(scale)
     with tempfile.TemporaryDirectory() as tmp:
         hp = Path(tmp) / "doc.html"
         op = Path(tmp) / "out.png"
-        hp.write_text(html, encoding="utf-8")
+        hp.write_text(_locked_html(html), encoding="utf-8")
         url = "file:///" + str(hp).replace("\\", "/")
         subprocess.run(
-            [chrome, "--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+            [chrome, "--headless", "--disable-gpu", "--no-sandbox", *_LOCKDOWN, "--hide-scrollbars",
              f"--force-device-scale-factor={scale}", "--virtual-time-budget=3500",
              f"--window-size={w_px},{h_px}", f"--screenshot={op}", url],
             timeout=90, capture_output=True,

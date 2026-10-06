@@ -10,6 +10,7 @@ import { createElement, useCallback, useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { EditorElement, ElType, importDoc, renderHtml, renderPng } from "@/lib/editor-api"
+import { GOOGLE_FONTS, buildEditorHtml, safePage } from "@/lib/editor-html"
 import { ICON_NAMES, iconShapes, iconSvgInner } from "@/lib/editor-icons"
 import { dictionaries, errorText, pick, type Messages } from "@/lib/i18n"
 import { useI18n, useMessage } from "@/lib/i18n/provider"
@@ -21,7 +22,6 @@ const SIZES: Record<PageSize, { w: number; h: number }> = {
     Letter: { w: 612, h: 792 },
 }
 const SIZE_KEYS = Object.keys(SIZES) as PageSize[]
-const GOOGLE_FONTS = ["Inter", "Plus Jakarta Sans", "Roboto", "Poppins", "Montserrat", "Lato", "Raleway", "Oswald", "Merriweather", "Playfair Display", "Work Sans", "Manrope", "Nunito", "Source Sans 3"]
 const SYSTEM_FONTS = ["Arial", "Georgia", "Times New Roman", "Courier New", "Verdana"]
 const ALL_FONTS = [...GOOGLE_FONTS, ...SYSTEM_FONTS]
 const LS_KEY = "sharpz-editor-doc-v1"
@@ -49,8 +49,6 @@ function seed(m: Messages): EditorElement[] {
 
 let _uid = 0
 const uid = () => `el${Date.now().toString(36)}${(_uid++).toString(36)}`
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-const isGoogle = (f?: string) => GOOGLE_FONTS.includes(f || "")
 const norm = (e: Partial<EditorElement> & { id: string }): EditorElement => ({
     type: "text", text: "", x: 0, y: 0, w: 120, fontSize: 12, bold: false, italic: false,
     color: "#1a2436", align: "left", fontFamily: "Inter", opacity: 1, rotation: 0, ...e,
@@ -268,25 +266,14 @@ export function EditorTool() {
     }
 
     function buildHtml() {
-        const used = Array.from(new Set(elements.map((e) => e.fontFamily).filter(isGoogle)))
-        const link = used.length ? `<link href="https://fonts.googleapis.com/css2?${used.map((f) => "family=" + (f as string).replace(/ /g, "+") + ":ital,wght@0,400;0,700;1,400;1,700").join("&")}&display=swap" rel="stylesheet">` : ""
-        const body = elements.map((el) => {
-            const rot = el.rotation ? `transform:rotate(${el.rotation}deg);transform-origin:center;` : ""
-            const op = el.opacity != null && el.opacity < 1 ? `opacity:${el.opacity};` : ""
-            const base = `position:absolute;left:${el.x}pt;top:${el.y}pt;${rot}${op}`
-            if (el.type === "icon") return `<div style="${base}width:${el.fontSize}pt;height:${el.fontSize}pt;color:${el.color}"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${iconSvgInner(el.icon)}</svg></div>`
-            if (el.type === "rect") return `<div style="${base}width:${el.w}pt;height:${el.h}pt;background:${el.fill || "transparent"};border:1pt solid ${el.color};border-radius:4pt"></div>`
-            if (el.type === "line") return `<div style="${base}width:${el.w}pt;height:${Math.max(1, el.h || 2)}pt;background:${el.color}"></div>`
-            if (el.type === "image") return `<img src="${el.src}" style="${base}width:${el.w}pt;height:${el.h}pt;object-fit:contain"/>`
-            return `<div style="${base}width:${el.w}pt;font-size:${el.fontSize}pt;font-weight:${el.bold ? 700 : 400};font-style:${el.italic ? "italic" : "normal"};text-decoration:${el.underline ? "underline" : "none"};color:${el.color};text-align:${el.align};font-family:'${el.fontFamily || "Inter"}',Arial,sans-serif;line-height:${el.lineHeight || 1.2};white-space:pre-wrap;word-break:break-word">${esc(el.text)}</div>`
-        }).join("")
-        return `<!doctype html><html><head><meta charset="utf-8">${link}<style>@page{size:${page.w}pt ${page.h}pt;margin:0}*{margin:0;padding:0;box-sizing:border-box}html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{position:relative;width:${page.w}pt;height:${page.h}pt;background:${pageBg};overflow:hidden}</style></head><body><div class="page">${body}</div></body></html>`
+        return buildEditorHtml({ elements, page, pageBg }, iconSvgInner)
     }
 
     async function exportAs(kind: "pdf" | "png") {
         setBusy(true); setError(null); setMenu("")
         try {
-            const blob = kind === "pdf" ? await renderHtml(buildHtml()) : await renderPng(buildHtml(), page.w, page.h)
+            const size = safePage(page)
+            const blob = kind === "pdf" ? await renderHtml(buildHtml()) : await renderPng(buildHtml(), size.w, size.h)
             const url = URL.createObjectURL(blob); const a = document.createElement("a")
             a.href = url; a.download = `${t.editor.exportName}.${kind}`; a.click(); URL.revokeObjectURL(url)
         } catch (err) { setError(errorText(err, (m) => m.editor.exportFailed)) } finally { setBusy(false) }
