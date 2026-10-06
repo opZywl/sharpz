@@ -76,6 +76,8 @@ jobs:
         run: npm ci
       - name: Type check
         run: npx tsc --noEmit -p .
+      - name: Unit tests
+        run: npm test
       - name: Production build
         run: npm run build
 
