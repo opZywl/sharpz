@@ -4,7 +4,7 @@
 
 # Third-party licenses
 
-The Sharpz code is under the [MIT license](../../LICENSE). It relies on other projects, each under its own license. Sharpz does not ship them: the installer downloads packages and tools from their official sources, and AI models are downloaded the first time they are used.
+The Sharpz code is under the [MIT license](../../LICENSE). It relies on other projects, each under its own license. Sharpz does not ship them, except the two dashboard fonts (with their licenses in `web/app/fonts`): the installer downloads packages and tools from their official sources, and AI models are downloaded the first time they are used.
 
 ## Worth knowing
 
@@ -64,7 +64,7 @@ The Sharpz code is under the [MIT license](../../LICENSE). It relies on other pr
 | class-variance-authority | Apache-2.0 |
 | Lucide | ISC |
 | wavesurfer.js | BSD-3-Clause |
-| Space Grotesk and Plus Jakarta Sans fonts | SIL Open Font License 1.1 |
+| Space Grotesk and Plus Jakarta Sans fonts (bundled in `web/app/fonts`, with their license files) | SIL Open Font License 1.1 |
 
 ## External tools
 

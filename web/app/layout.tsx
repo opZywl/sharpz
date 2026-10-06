@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google"
+import localFont from "next/font/local"
 
 import { LanguageScript } from "@/components/language-script"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -8,16 +8,17 @@ import { DEFAULT_LANG } from "@/lib/i18n/config"
 import { I18nProvider } from "@/lib/i18n/provider"
 import "./globals.css"
 
-const spaceGrotesk = Space_Grotesk({
-    subsets: ["latin"],
+const spaceGrotesk = localFont({
+    src: "./fonts/space-grotesk.woff2",
     variable: "--font-space-grotesk",
+    weight: "300 700",
     display: "swap",
 })
 
-const jakarta = Plus_Jakarta_Sans({
-    subsets: ["latin"],
+const jakarta = localFont({
+    src: "./fonts/plus-jakarta-sans.woff2",
     variable: "--font-jakarta",
-    weight: ["400", "500", "600", "700", "800"],
+    weight: "200 800",
     display: "swap",
 })
 

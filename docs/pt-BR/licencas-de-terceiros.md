@@ -4,7 +4,7 @@
 
 # Licenças de terceiros
 
-O código do Sharpz está sob a [licença MIT](../../LICENSE). Ele usa outros projetos, cada um com a sua licença. O Sharpz não distribui esses projetos: o instalador baixa pacotes e ferramentas das fontes oficiais, e os modelos de IA são baixados na primeira vez em que são usados.
+O código do Sharpz está sob a [licença MIT](../../LICENSE). Ele usa outros projetos, cada um com a sua licença. O Sharpz não distribui esses projetos, exceto as duas fontes do painel (com as licenças em `web/app/fonts`): o instalador baixa pacotes e ferramentas das fontes oficiais, e os modelos de IA são baixados na primeira vez em que são usados.
 
 ## Vale saber
 
@@ -64,7 +64,7 @@ O código do Sharpz está sob a [licença MIT](../../LICENSE). Ele usa outros pr
 | class-variance-authority | Apache-2.0 |
 | Lucide | ISC |
 | wavesurfer.js | BSD-3-Clause |
-| Fontes Space Grotesk e Plus Jakarta Sans | SIL Open Font License 1.1 |
+| Fontes Space Grotesk e Plus Jakarta Sans (incluídas em `web/app/fonts`, com os arquivos de licença) | SIL Open Font License 1.1 |
 
 ## Ferramentas externas
 
