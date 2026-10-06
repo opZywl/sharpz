@@ -16,6 +16,7 @@ from PIL import Image
 import imgpdf.jobs as imgpdf_jobs
 import packages
 import server
+from api import image_pdf as image_pdf_api
 import src.processor as processor
 from src import ktx
 from src.i18n import DEFAULT_LANG, MESSAGES, SUPPORTED_LANGS, accept_language, normalize_lang, resolve_lang, t, use_lang
@@ -211,7 +212,7 @@ class ApiLanguageTests(unittest.TestCase):
         root = Path(output.name)
         for patcher in (
             mock.patch.object(imgpdf_jobs, "OUTPUT_ROOT", root),
-            mock.patch.object(server, "IMGPDF_UPLOAD_DIR", root / "_uploads"),
+            mock.patch.object(image_pdf_api, "IMGPDF_UPLOAD_DIR", root / "_uploads"),
         ):
             patcher.start()
             self.addCleanup(patcher.stop)

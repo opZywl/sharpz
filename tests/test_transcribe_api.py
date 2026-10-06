@@ -8,6 +8,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 import server
+from api import transcription
 
 
 def upload_request() -> tuple[bytes, str]:
@@ -58,8 +59,8 @@ class TranscribeApiCase(unittest.TestCase):
         self.store = mock.MagicMock()
         self.store.enqueue.return_value = ("job1", False)
         patches = [
-            mock.patch.object(server, "TRANSCRIBE_STORE", self.store),
-            mock.patch.object(server, "TRANSCRIBE_UPLOAD_DIR", self.root / "uploads"),
+            mock.patch.object(transcription, "TRANSCRIBE_STORE", self.store),
+            mock.patch.object(transcription, "TRANSCRIBE_UPLOAD_DIR", self.root / "uploads"),
         ]
         for patcher in patches:
             patcher.start()
@@ -95,8 +96,8 @@ class UploadDisconnectTests(TranscribeApiCase):
 
 class CapabilitiesTests(TranscribeApiCase):
     def capabilities(self, venv: bool, whisperx: bool) -> dict:
-        with mock.patch.object(server, "transcribe_venv_available", return_value=venv), \
-                mock.patch.object(server, "transcribe_whisperx_available", return_value=whisperx):
+        with mock.patch.object(transcription, "transcribe_venv_available", return_value=venv), \
+                mock.patch.object(transcription, "transcribe_whisperx_available", return_value=whisperx):
             response = self.client.get("/api/transcribe/capabilities")
         self.assertEqual(response.status_code, 200)
         return response.json()

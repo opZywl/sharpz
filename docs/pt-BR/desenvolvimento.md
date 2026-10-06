@@ -10,7 +10,8 @@
 sharpz/
   sharpz.cmd              launcher principal (menu)
   scripts/                instalar, abrir, produção e teste
-  server.py               servidor do painel (todas as rotas /api)
+  server.py               servidor do painel (app, middleware, health/capabilities/models)
+  api/                    rotas /api por funcionalidade
   app.py                  interface antiga, mantida como alternativa
   cli.py                  remoção de fundo e SVG pela linha de comando
   ktx_cli.py              conversão KTX pela linha de comando

@@ -7,7 +7,9 @@ from fastapi.testclient import TestClient
 from starlette.datastructures import Headers
 
 import server
+from api.security import _is_local_request
 from transcribe import jobs as transcribe_jobs
+from transcribe import store as transcribe_store
 
 
 class LocalOnlyTests(unittest.TestCase):
@@ -17,9 +19,9 @@ class LocalOnlyTests(unittest.TestCase):
                 self.assertEqual(TestClient(server.app, base_url=base_url).get("/api/health").status_code, 200)
 
     def test_ipv6_loopback_is_local(self):
-        self.assertTrue(server._is_local_request(Headers({"host": "[::1]:8000", "origin": "http://[::1]:5174"})))
-        self.assertFalse(server._is_local_request(Headers({"host": "[::2]:8000"})))
-        self.assertFalse(server._is_local_request(Headers({})))
+        self.assertTrue(_is_local_request(Headers({"host": "[::1]:8000", "origin": "http://[::1]:5174"})))
+        self.assertFalse(_is_local_request(Headers({"host": "[::2]:8000"})))
+        self.assertFalse(_is_local_request(Headers({})))
 
     def test_dashboard_origins_are_accepted(self):
         client = TestClient(server.app)
@@ -58,7 +60,7 @@ class YtDlpArgumentTests(unittest.TestCase):
             store = object.__new__(transcribe_jobs.JobStore)
             store.log_path = Path(tmp) / "jobs.log"
             store._handle_event = lambda job_id, event: None
-            with mock.patch.object(transcribe_jobs, "_spawn", fake_spawn):
+            with mock.patch.object(transcribe_store, "_spawn", fake_spawn):
                 with self.assertRaises(transcribe_jobs.JobFailed):
                     store._download_url("job-0001", url, Path(tmp))
         self.assertEqual(captured["argv"][-2:], ["--", url])

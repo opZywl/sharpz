@@ -10,7 +10,8 @@
 sharpz/
   sharpz.cmd              main launcher (menu)
   scripts/                install, open, production and test
-  server.py               dashboard server (all /api routes)
+  server.py               dashboard server (app, middleware, health/capabilities/models)
+  api/                    /api routers per feature
   app.py                  legacy interface, kept as an alternative
   cli.py                  background removal and SVG from the command line
   ktx_cli.py              KTX conversion from the command line

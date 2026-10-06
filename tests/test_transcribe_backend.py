@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from transcribe import jobs  # noqa: E402
+from transcribe import jobs, store as store_module  # noqa: E402
 
 FAKE_WORKER = textwrap.dedent(
     """
@@ -710,7 +710,7 @@ class JobStoreTests(BackendTestCase):
             return original_spawn(argv, log_path, label, **kwargs)
 
         with mock.patch.object(store.worker, "shutdown", side_effect=shutdown), \
-                mock.patch.object(jobs, "_spawn", side_effect=spawn):
+                mock.patch.object(store_module, "_spawn", side_effect=spawn):
             job_id, _ = self.run_job(store, self.options(self.make_input(), diarize=True, formats=["srt"]))
 
         self.assertEqual(store.get(job_id)["status"], "done")
