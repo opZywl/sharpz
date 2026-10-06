@@ -84,6 +84,7 @@ from transcribe.jobs import (
     VALID_FORMATS as TRANSCRIBE_VALID_FORMATS,
     model_catalog as transcribe_model_catalog,
     normalize_model_key as transcribe_model_key,
+    prune_uploads as transcribe_prune_uploads,
     resolve_model as transcribe_resolve_model,
     save_stream as transcribe_save_stream,
     venv_available as transcribe_venv_available,
@@ -95,6 +96,12 @@ from imgpdf.jobs import (
 )
 from imgpdf.vision import tesseract_available as imgpdf_tesseract_available
 from imgpdf import editor as imgpdf_editor
+
+
+try:
+    transcribe_prune_uploads(TRANSCRIBE_UPLOAD_DIR)
+except Exception:
+    pass
 
 
 app = FastAPI(title="Cleanup Image API", version="1.0.0")
@@ -439,6 +446,7 @@ class TranscribeCapabilitiesResponse(BaseModel):
     diarization: bool
     venv: bool
     default_model: str
+    word_timestamps: bool
 
 
 class TranscribeSummarizeRequest(BaseModel):
@@ -1182,6 +1190,7 @@ def _last_event_id(request: Request, since: int | None) -> int:
 
 @app.post("/api/transcribe", response_model=TranscribeJobCreated)
 async def transcribe_create(
+    request: Request,
     file: UploadFile | None = File(None),
     local_path: str = Form(""),
     url: str = Form(None),
@@ -1259,6 +1268,10 @@ async def transcribe_create(
         "make_zip": make_zip,
         "open_folder": open_folder,
     }
+    if await request.is_disconnected():
+        if upload_target is not None:
+            upload_target.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=t("transcribe.upload_canceled"))
     job_id, deduped = TRANSCRIBE_STORE.enqueue(options)
     if deduped and upload_target is not None:
         upload_target.unlink(missing_ok=True)
@@ -1299,6 +1312,7 @@ def transcribe_capabilities() -> TranscribeCapabilitiesResponse:
         diarization=whisperx,
         venv=transcribe_venv_available(),
         default_model=transcribe_resolve_model(TRANSCRIBE_DEFAULT_MODEL),
+        word_timestamps=transcribe_venv_available(),
     )
 
 

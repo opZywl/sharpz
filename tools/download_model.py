@@ -50,7 +50,7 @@ def main(argv: list[str]) -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
         pass
-    requested = (argv[1] if len(argv) > 1 else "large-v3").strip()
+    requested = (argv[1] if len(argv) > 1 else catalog().FAST_MODEL).strip()
     key = catalog().MODEL_ALIASES.get(requested.lower(), requested)
     utils = faster_whisper_utils()
     if utils is None:

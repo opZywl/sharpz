@@ -59,11 +59,11 @@ Precisa do KTX-Software instalado (veja [Texturas KTX](texturas-ktx.md)).
 ## Baixar modelos de transcrição
 
 ```powershell
-.\whisper-venv\Scripts\python.exe tools\download_model.py turbo
+.\whisper-venv\Scripts\python.exe tools\download_model.py
 .\whisper-venv\Scripts\python.exe tools\download_model.py large-v3
 ```
 
-Sem argumento, baixa o `large-v3`. O download tenta de novo sozinho se a conexão cair e mostra o progresso.
+Sem argumento, baixa o modelo rápido `large-v3-turbo`, o mesmo que o instalador baixa. Passe `large-v3` para a melhor qualidade e para a tradução. O download tenta de novo sozinho se a conexão cair e mostra o progresso.
 
 ---
 

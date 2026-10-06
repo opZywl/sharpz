@@ -19,7 +19,7 @@ Everything starts with `sharpz.cmd`, in the project root. It shows a menu:
 
 | Option | What it does | When to use |
 | --- | --- | --- |
-| **1 · Install everything and open** | Checks and installs what is missing, downloads the transcription model (~3 GB, only once), starts the server and the dashboard, and opens Chrome. | The first time and after updating the project. |
+| **1 · Install everything and open** | Checks and installs what is missing, downloads the fast transcription model (~1.6 GB, only once), starts the server and the dashboard, and opens Chrome. | The first time and after updating the project. |
 | **2 · Open the dashboard** | Starts the server and the dashboard and opens Chrome. | Everyday use. |
 | **3 · Production mode** | Builds the optimized version of the dashboard and runs everything in that mode. | When you want a lighter, faster dashboard. |
 | **4 · Test** | Runs the quick test against the running server. | To check that everything works. |

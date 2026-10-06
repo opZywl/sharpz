@@ -19,7 +19,7 @@ Tudo começa pelo `sharpz.cmd`, na raiz do projeto. Ele mostra um menu:
 
 | Opção | O que faz | Quando usar |
 | --- | --- | --- |
-| **1 · Instalar tudo e abrir** | Confere e instala o que falta, baixa o modelo de transcrição (~3 GB, uma vez só), sobe o servidor e o painel e abre o Chrome. | Na primeira vez e depois de atualizar o projeto. |
+| **1 · Instalar tudo e abrir** | Confere e instala o que falta, baixa o modelo rápido de transcrição (~1,6 GB, uma vez só), sobe o servidor e o painel e abre o Chrome. | Na primeira vez e depois de atualizar o projeto. |
 | **2 · Abrir o painel** | Sobe o servidor e o painel e abre o Chrome. | No dia a dia. |
 | **3 · Modo produção** | Gera a versão otimizada do painel e sobe tudo nesse modo. | Quando quiser o painel mais leve e rápido. |
 | **4 · Testar** | Roda o teste rápido contra o servidor que está no ar. | Para conferir se está tudo funcionando. |

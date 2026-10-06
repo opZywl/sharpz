@@ -114,12 +114,13 @@ echo %C_GREEN%  [ok] !T_BACKEND_READY!%C_RESET%
 echo.
 
 echo %C_CYAN%[4/8] !T_MODEL_PREFETCH!%C_RESET%
-"%WPY%" "%ROOT%\tools\download_model.py" large-v3
+"%WPY%" "%ROOT%\tools\download_model.py" large-v3-turbo
 if errorlevel 1 (
   echo %C_YEL%  [*] !T_MODEL_PREFETCH_FAILED!%C_RESET%
 ) else (
   echo %C_GREEN%  [ok] !T_MODEL_READY!%C_RESET%
 )
+echo   !T_MODEL_LARGE_HINT!
 echo.
 
 echo %C_CYAN%[5/8] !T_DASHBOARD_NPM!%C_RESET%

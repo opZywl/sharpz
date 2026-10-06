@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import http.server
 import io
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -435,6 +437,56 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertIn("modelo pronto", (Path(self._tmp.name) / "log.txt").read_text(encoding="utf-8"))
 
 
+class WhisperXAlignTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        self.root = Path(self._tmp.name)
+        (self.root / "model").mkdir()
+        self.audio = self.root / "a.ogg"
+        self.audio.write_bytes(b"x")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def run_whisperx(self, translate: bool) -> tuple[mock.MagicMock, list[dict], list[str]]:
+        from transcribe import engine
+
+        model = mock.MagicMock()
+        model.transcribe.return_value = {"segments": [{"start": 0, "end": 1, "text": "hi"}], "language": "pt"}
+        fake = mock.MagicMock()
+        fake.load_model.return_value = model
+        fake.load_audio.return_value = [0.0] * 16000
+        fake.load_align_model.return_value = (object(), {})
+        fake.align.return_value = {"segments": [{"start": 0, "end": 1, "text": "hi", "words": []}]}
+        args = engine.args_from_dict({
+            "input": str(self.audio), "out_dir": str(self.root / "out"), "job_id": "j1",
+            "model": str(self.root / "model"), "translate": translate, "diarize": True,
+        })
+        events: list[dict] = []
+        degraded: list[str] = []
+        env = {key: value for key, value in os.environ.items() if key != "HF_TOKEN"}
+        with mock.patch.dict(sys.modules, {"whisperx": fake}), mock.patch.dict(os.environ, env, clear=True):
+            segments, _info = engine.run_whisperx(args, degraded, events.append)
+        self.assertEqual([segment["text"] for segment in segments], ["hi"])
+        return fake, events, degraded
+
+    def test_translated_text_is_not_force_aligned(self) -> None:
+        fake, events, degraded = self.run_whisperx(translate=True)
+        fake.load_align_model.assert_not_called()
+        fake.align.assert_not_called()
+        align = [event for event in events if event.get("stage") == "align"]
+        self.assertEqual(len(align), 1)
+        self.assertEqual(align[0]["status"], "skipped")
+        self.assertIn("traduzido", align[0]["detail"])
+        self.assertIn("align", degraded)
+
+    def test_transcription_is_aligned(self) -> None:
+        fake, events, degraded = self.run_whisperx(translate=False)
+        fake.load_align_model.assert_called_once()
+        self.assertIn(("align", "done"), [(event.get("stage"), event.get("status")) for event in events])
+        self.assertNotIn("align", degraded)
+
+
 class JobStoreTests(BackendTestCase):
     def test_events_have_ids_replay_and_text(self) -> None:
         store = self.make_store()
@@ -444,6 +496,7 @@ class JobStoreTests(BackendTestCase):
         self.assertEqual(ids, list(range(1, len(ids) + 1)))
         kinds = [event["type"] for _, event in events]
         self.assertEqual(events[0][1], {"type": "stage", "stage": "queued", "status": "start", "detail": ""})
+        self.assertEqual(events[1][1], {"type": "stage", "stage": "start", "status": "start", "detail": ""})
         self.assertEqual(kinds[-1], "done")
         self.assertEqual(kinds.count("done"), 1)
         self.assertIn("segment", kinds)
@@ -639,6 +692,63 @@ class JobStoreTests(BackendTestCase):
         self.assertEqual(snapshot["text"], "[Locutor 1] fala\n")
         self.assertIsNone(store.worker._proc)
 
+    def test_diarize_releases_warm_worker_before_engine_starts(self) -> None:
+        store = self.make_store()
+        self.run_job(store, self.options(self.make_input()))
+        warm = store.worker._proc
+        self.assertIsNotNone(warm)
+        calls: list = []
+        original_shutdown = store.worker.shutdown
+        original_spawn = jobs._spawn
+
+        def shutdown() -> None:
+            calls.append("shutdown")
+            original_shutdown()
+
+        def spawn(argv, log_path, label, **kwargs):
+            calls.append(label)
+            return original_spawn(argv, log_path, label, **kwargs)
+
+        with mock.patch.object(store.worker, "shutdown", side_effect=shutdown), \
+                mock.patch.object(jobs, "_spawn", side_effect=spawn):
+            job_id, _ = self.run_job(store, self.options(self.make_input(), diarize=True, formats=["srt"]))
+
+        self.assertEqual(store.get(job_id)["status"], "done")
+        self.assertIsNotNone(warm.poll())
+        self.assertIsNone(store.worker._proc)
+        engine_calls = [index for index, call in enumerate(calls) if str(call).startswith("engine")]
+        self.assertTrue(engine_calls)
+        self.assertIn("shutdown", calls)
+        self.assertLess(calls.index("shutdown"), engine_calls[0])
+
+    def complete_job_seen_worker(self, gen_docs: bool) -> tuple[object, dict]:
+        store = self.make_store()
+        self.run_job(store, self.options(self.make_input()))
+        warm = store.worker._proc
+        self.assertIsNotNone(warm)
+        seen: dict = {}
+
+        def fake_run(job_id, input_path, out_dir, segments, info, options, emit, **kwargs):
+            seen["proc"] = store.worker._proc
+            seen["alive"] = warm.poll() is None
+            return {"slug": "x", "title": "x", "docs": [], "images": [], "captions": {}, "contact_sheets": [],
+                    "transcripts": [], "degraded": []}
+
+        with mock.patch.object(jobs.complete_mod, "run", side_effect=fake_run):
+            job_id, _ = self.run_job(store, self.options(self.make_input(), mode="complete", gen_docs=gen_docs))
+        self.assertEqual(store.get(job_id)["status"], "done")
+        return warm, seen
+
+    def test_complete_with_docs_releases_worker_before_vision_step(self) -> None:
+        warm, seen = self.complete_job_seen_worker(gen_docs=True)
+        self.assertIsNone(seen["proc"])
+        self.assertFalse(seen["alive"])
+
+    def test_complete_without_docs_keeps_worker_warm(self) -> None:
+        warm, seen = self.complete_job_seen_worker(gen_docs=False)
+        self.assertIs(seen["proc"], warm)
+        self.assertTrue(seen["alive"])
+
     def test_unavailable_worker_falls_back_to_engine(self) -> None:
         store = self.make_store(worker_cmd=[sys.executable, "-c", "import sys; sys.exit(5)"])
         job_id, events = self.run_job(store, self.options(self.make_input()))
@@ -646,6 +756,350 @@ class JobStoreTests(BackendTestCase):
         self.assertTrue(meta["engine"])
         self.assertEqual(store.get(job_id)["status"], "done")
         self.assertIn("motor quente indisponível", (self.root / "out" / "_worker.log").read_text(encoding="utf-8"))
+
+
+class FailingSource:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def read(self, size: int) -> bytes:
+        self.calls += 1
+        if self.calls > 1:
+            raise OSError(28, "No space left on device")
+        return b"x" * size
+
+
+class UploadCleanupTests(BackendTestCase):
+    def make_upload(self, store: jobs.JobStore, behavior: str = "ok") -> Path:
+        store.upload_dir.mkdir(parents=True, exist_ok=True)
+        path = store.upload_dir / f"{time.monotonic_ns()}_{behavior}.ogg"
+        path.write_text(behavior, encoding="utf-8")
+        return path
+
+    def test_save_stream_removes_partial_file_on_error(self) -> None:
+        target = self.root / "uploads" / "partial.ogg"
+        with self.assertRaises(OSError):
+            jobs.save_stream(FailingSource(), target, chunk_size=1024)
+        self.assertFalse(target.exists())
+
+    def test_upload_dir_lives_under_the_output_root(self) -> None:
+        store = self.make_store()
+        self.assertEqual(store.upload_dir, self.root / "out" / "_uploads")
+        self.assertEqual(jobs.JobStore(output_root=jobs.OUTPUT_ROOT, use_worker=False).upload_dir, jobs.UPLOAD_DIR)
+
+    def test_canceled_queued_upload_is_deleted(self) -> None:
+        store = self.make_store()
+        slow_id, _ = store.enqueue(self.options(self.make_input("slow")))
+        wait_until(lambda: (store.get(slow_id) or {}).get("segments"))
+        upload = self.make_upload(store)
+        queued_id, _ = store.enqueue(self.options(upload))
+        self.assertEqual(store.cancel(queued_id), {"ok": True, "status": "canceled"})
+        self.assertFalse(upload.exists())
+
+    def test_canceled_running_upload_is_deleted_after_the_job_unwinds(self) -> None:
+        store = self.make_store()
+        upload = self.make_upload(store, "slow")
+        job_id, _ = store.enqueue(self.options(upload))
+        wait_until(lambda: (store.get(job_id) or {}).get("segments"))
+        store.cancel(job_id)
+        wait_until(lambda: not upload.exists())
+
+    def test_failed_upload_is_deleted_and_done_upload_is_kept(self) -> None:
+        store = self.make_store()
+        failed = self.make_upload(store, "fail")
+        fail_id, _ = self.run_job(store, self.options(failed))
+        self.assertEqual(store.get(fail_id)["status"], "error")
+        wait_until(lambda: not failed.exists())
+        kept = self.make_upload(store)
+        done_id, _ = self.run_job(store, self.options(kept))
+        self.assertEqual(store.get(done_id)["status"], "done")
+        self.assertTrue(kept.exists())
+
+    def test_canceled_local_file_outside_uploads_is_kept(self) -> None:
+        store = self.make_store()
+        local = self.make_input("slow")
+        job_id, _ = store.enqueue(self.options(local))
+        wait_until(lambda: (store.get(job_id) or {}).get("segments"))
+        store.cancel(job_id)
+        queued = self.make_input()
+        slow_id, _ = store.enqueue(self.options(self.make_input("slow")))
+        queued_id, _ = store.enqueue(self.options(queued))
+        store.cancel(queued_id)
+        store.cancel(slow_id)
+        time.sleep(0.5)
+        self.assertTrue(local.exists())
+        self.assertTrue(queued.exists())
+
+    def test_prune_uploads_removes_only_old_files(self) -> None:
+        folder = self.root / "uploads"
+        folder.mkdir()
+        old = folder / "old.ogg"
+        fresh = folder / "fresh.ogg"
+        old.write_bytes(b"1")
+        fresh.write_bytes(b"2")
+        (folder / "sub").mkdir()
+        now = time.time()
+        os.utime(old, (now - 3 * 86400, now - 3 * 86400))
+        self.assertEqual(jobs.prune_uploads(folder, max_age_s=86400, now=now), 1)
+        self.assertFalse(old.exists())
+        self.assertTrue(fresh.exists())
+        self.assertTrue((folder / "sub").is_dir())
+        self.assertEqual(jobs.prune_uploads(self.root / "missing"), 0)
+
+
+MANIFEST_TYPES = {
+    "slug": str,
+    "title": str,
+    "out_dir": str,
+    "frames": int,
+    "images": list,
+    "captions": dict,
+    "contact_sheets": list,
+    "docs": list,
+    "transcripts": list,
+    "docs_generated": bool,
+    "degraded": list,
+}
+
+
+class CompleteModeTests(BackendTestCase):
+    def test_manifest_has_full_shape_without_ffmpeg(self) -> None:
+        out_dir = self.root / "complete"
+        out_dir.mkdir()
+        with mock.patch.object(jobs.complete_mod, "ffmpeg_exe", return_value=None):
+            manifest = jobs.complete_mod.run(
+                "abcdef1234", self.make_input(), out_dir, [], {}, {"output_name": "Minha Reunião"}, lambda event: None,
+            )
+        for key, kind in MANIFEST_TYPES.items():
+            with self.subTest(key=key):
+                self.assertIsInstance(manifest.get(key), kind)
+        self.assertIn("dest_dir", manifest)
+        self.assertIn("zip", manifest)
+        self.assertEqual(manifest["slug"], "minha-reuniao")
+        self.assertEqual(manifest["title"], "minha-reuniao")
+        self.assertEqual(manifest["degraded"], ["complete"])
+
+    def test_complete_job_without_ffmpeg_publishes_full_manifest(self) -> None:
+        store = self.make_store()
+        with mock.patch.object(jobs.complete_mod, "ffmpeg_exe", return_value=None):
+            job_id, events = self.run_job(store, self.options(self.make_input(), mode="complete"))
+        snapshot = store.get(job_id)
+        self.assertEqual(snapshot["status"], "done")
+        self.assertEqual(snapshot["complete"]["docs"], [])
+        self.assertEqual(snapshot["complete"]["images"], [])
+        self.assertEqual(snapshot["complete"]["captions"], {})
+        self.assertIn("complete", snapshot["degraded"])
+
+    def test_partial_manifest_is_normalized_before_publishing(self) -> None:
+        store = self.make_store()
+        with mock.patch.object(jobs.complete_mod, "run", return_value={"degraded": ["docs"]}):
+            job_id, _ = self.run_job(store, self.options(self.make_input(), mode="complete"))
+        manifest = store.get(job_id)["complete"]
+        for key, kind in MANIFEST_TYPES.items():
+            with self.subTest(key=key):
+                self.assertIsInstance(manifest.get(key), kind)
+        self.assertEqual(manifest["degraded"], ["docs"])
+
+
+SLEEP_ARGV = [sys.executable, "-c", "import time; time.sleep(60)"]
+
+
+class VisionServer:
+    def __init__(self, status: int = 200, body: bytes = b"", delay: float = 0.0) -> None:
+        self.release = threading.Event()
+        self.requests: list[dict] = []
+        self.paths: list[str] = []
+        owner = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                length = int(self.headers.get("Content-Length") or 0)
+                owner.paths.append(self.path)
+                owner.requests.append(json.loads(self.rfile.read(length) or b"{}"))
+                if delay:
+                    owner.release.wait(delay)
+                try:
+                    self.send_response(status)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                except OSError:
+                    pass
+
+            def log_message(self, *args) -> None:
+                pass
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.httpd.daemon_threads = True
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}/v1"
+
+    def close(self) -> None:
+        self.release.set()
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+class CompleteCancelTests(BackendTestCase):
+    def vision(self, server: VisionServer) -> dict:
+        return {"base_url": server.url, "model": "llava", "api_key": ""}
+
+    def serve(self, **kwargs) -> VisionServer:
+        server = VisionServer(**kwargs)
+        self.addCleanup(server.close)
+        return server
+
+    def test_store_run_ff_is_killed_by_cancel(self) -> None:
+        store = self.make_store()
+        slow_id, _ = store.enqueue(self.options(self.make_input("slow")))
+        wait_until(lambda: (store.get(slow_id) or {}).get("segments"))
+        outcome: dict = {}
+
+        def target() -> None:
+            try:
+                outcome["result"] = store._run_ff(slow_id, SLEEP_ARGV)
+            except BaseException as exc:
+                outcome["error"] = exc
+
+        thread = threading.Thread(target=target, daemon=True)
+        thread.start()
+        child = wait_until(lambda: store._jobs[slow_id]["proc"])
+        started = time.monotonic()
+        self.assertEqual(store.cancel(slow_id), {"ok": True, "status": "canceled"})
+        thread.join(5)
+        self.assertFalse(thread.is_alive())
+        self.assertLess(time.monotonic() - started, 3.0)
+        self.assertIsInstance(outcome.get("error"), jobs.JobCanceled)
+        self.assertIsNotNone(child.poll())
+
+    def test_run_stops_before_delivery_when_canceled(self) -> None:
+        out_dir = self.root / "complete"
+        out_dir.mkdir()
+        stopped = {"value": False}
+
+        def emit(event: dict) -> None:
+            if event.get("stage") == "transcricao" and event.get("status") == "done":
+                stopped["value"] = True
+
+        with mock.patch.object(jobs.complete_mod, "ffmpeg_exe", return_value="ffmpeg"), \
+                mock.patch.object(jobs.complete_mod, "deliver") as deliver:
+            with self.assertRaises(jobs.complete_mod.Canceled):
+                jobs.complete_mod.run(
+                    "abcdef1234", self.make_input(), out_dir, [], {}, {"make_zip": True}, emit,
+                    run_ff=lambda argv: (0, ""), should_stop=lambda: stopped["value"],
+                )
+        deliver.assert_not_called()
+
+    def test_deliver_checks_cancel_before_copy_zip_and_open(self) -> None:
+        out_dir = self.root / "complete"
+        out_dir.mkdir()
+        (out_dir / "README.md").write_text("x", encoding="utf-8")
+        with mock.patch.object(jobs.complete_mod.os, "startfile", create=True) as startfile:
+            with self.assertRaises(jobs.complete_mod.Canceled):
+                jobs.complete_mod.deliver(
+                    out_dir, "job1", "slug", str(self.root / "dest"), True, True, should_stop=lambda: True,
+                )
+        startfile.assert_not_called()
+        self.assertFalse((self.root / "dest").exists())
+        self.assertFalse((self.root / "job1_complete.zip").exists())
+
+    def test_generate_docs_stops_waiting_for_the_vision_ai_on_cancel(self) -> None:
+        server = self.serve(delay=30)
+        out_dir = self.root / "docs"
+        out_dir.mkdir()
+        started = time.monotonic()
+        with self.assertRaises(jobs.complete_mod.Canceled):
+            jobs.complete_mod.generate_docs(
+                out_dir, [], [], "texto", self.vision(server), lambda event: None,
+                should_stop=lambda: time.monotonic() - started > 0.5,
+            )
+        self.assertLess(time.monotonic() - started, 3.0)
+        self.assertEqual(len(server.requests), 1)
+
+    def test_generate_docs_cancel_while_connecting_sends_nothing(self) -> None:
+        server = self.serve(body=b"{}")
+        out_dir = self.root / "docs"
+        out_dir.mkdir()
+        entered = threading.Event()
+        gate = threading.Event()
+        original = socket.create_connection
+
+        def slow_connect(*args, **kwargs):
+            entered.set()
+            gate.wait(5)
+            return original(*args, **kwargs)
+
+        with mock.patch.object(socket, "create_connection", slow_connect):
+            with self.assertRaises(jobs.complete_mod.Canceled):
+                jobs.complete_mod.generate_docs(
+                    out_dir, [], [], "texto", self.vision(server), lambda event: None,
+                    should_stop=entered.is_set,
+                )
+            gate.set()
+            wait_until(lambda: not any(t.name == "complete-vision" for t in threading.enumerate()))
+        time.sleep(0.3)
+        self.assertEqual(server.requests, [])
+
+    def test_generate_docs_goes_through_the_configured_proxy(self) -> None:
+        reply = {"slug": "demo", "title": "Demo", "readme": "# Demo", "images": []}
+        body = json.dumps({"choices": [{"message": {"content": json.dumps(reply)}}]}).encode("utf-8")
+        proxy = self.serve(body=body)
+        out_dir = self.root / "docs"
+        out_dir.mkdir()
+        env = {key: value for key, value in os.environ.items() if "proxy" not in key.lower()}
+        env["HTTP_PROXY"] = proxy.url.rsplit("/", 1)[0]
+        vision = {"base_url": "http://vision.invalid/v1", "model": "llava"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            meta = jobs.complete_mod.generate_docs(out_dir, [], [], "texto", vision, lambda event: None)
+        self.assertEqual(meta["slug"], "demo")
+        self.assertEqual(proxy.paths, ["http://vision.invalid/v1/chat/completions"])
+
+    def test_generate_docs_writes_docs_from_the_vision_ai(self) -> None:
+        reply = {"slug": "demo", "title": "Demo", "readme": "# Demo", "images": []}
+        body = json.dumps({"choices": [{"message": {"content": json.dumps(reply)}}]}).encode("utf-8")
+        server = self.serve(body=body)
+        out_dir = self.root / "docs"
+        out_dir.mkdir()
+        meta = jobs.complete_mod.generate_docs(out_dir, [], [], "texto", self.vision(server), lambda event: None)
+        self.assertEqual(meta["docs"], ["README.md"])
+        self.assertEqual(meta["slug"], "demo")
+        self.assertEqual(server.requests[0]["model"], "llava")
+        self.assertEqual((out_dir / "README.md").read_text(encoding="utf-8"), "# Demo\n")
+
+    def test_generate_docs_keeps_http_and_connection_errors_readable(self) -> None:
+        server = self.serve(status=500, body=b"boom")
+        out_dir = self.root / "docs"
+        out_dir.mkdir()
+        with self.assertRaises(RuntimeError) as failed:
+            jobs.complete_mod.generate_docs(out_dir, [], [], "texto", self.vision(server), lambda event: None)
+        self.assertIn("500", str(failed.exception))
+        self.assertIn("boom", str(failed.exception))
+
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        closed = {"base_url": f"http://127.0.0.1:{port}/v1", "model": "llava"}
+        with self.assertRaises(RuntimeError) as unreachable:
+            jobs.complete_mod.generate_docs(out_dir, [], [], "texto", closed, lambda event: None)
+        self.assertIn("Não consegui falar com a IA de visão", str(unreachable.exception))
+
+    def test_cancel_during_complete_frees_the_queue(self) -> None:
+        store = self.make_store()
+        original = store._run_ff
+        with mock.patch.object(jobs.complete_mod, "ffmpeg_exe", return_value=sys.executable), \
+                mock.patch.object(store, "_run_ff", side_effect=lambda job_id, argv: original(job_id, SLEEP_ARGV)):
+            complete_id, _ = store.enqueue(self.options(self.make_input(), mode="complete"))
+            child = wait_until(lambda: store._jobs[complete_id]["proc"])
+            self.assertEqual(store.get(complete_id)["stage"], "audio")
+            next_id, _ = store.enqueue(self.options(self.make_input(), language="en"))
+            started = time.monotonic()
+            self.assertEqual(store.cancel(complete_id), {"ok": True, "status": "canceled"})
+            wait_until(lambda: store.get(next_id)["status"] == "done", timeout=10)
+        self.assertLess(time.monotonic() - started, 10.0)
+        self.assertIsNotNone(child.poll())
+        self.assertEqual(store.get(complete_id)["status"], "canceled")
 
 
 class RealWorkerTests(BackendTestCase):
@@ -709,6 +1163,7 @@ class RealWorkerTests(BackendTestCase):
         first_id, first = self.run_job(store, self.options(self.make_input(), word_timestamps=True, formats=["txt", "json"]))
         self.assertEqual(self.stages(first), [
             ("queued", "start"),
+            ("start", "start"),
             ("load_model", "start"),
             ("download_model", "start"),
             ("download_model", "done"),

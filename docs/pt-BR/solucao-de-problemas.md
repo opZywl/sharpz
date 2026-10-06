@@ -38,7 +38,7 @@ Rode `.\sharpz.cmd instalar`. Ele instala tudo que o Portfólio KTX precisa.
 ## A transcrição não começa
 
 - Confira em **Baixar pacotes** se o **FFmpeg** e o **motor de transcrição** estão instalados.
-- Na primeira transcrição o modelo é baixado (o Large v3 tem ~3 GB); acompanhe o progresso na tela.
+- Se o instalador não conseguiu baixar o modelo, a primeira transcrição baixa (o Large v3 Turbo tem ~1,6 GB e o Large v3, ~3 GB); acompanhe o progresso na tela.
 
 ## Separação de quem fala não funciona
 

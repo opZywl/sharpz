@@ -11,8 +11,8 @@ Turns audio and video into text. Drop the file, enter a path on your computer or
 | Model | Size | Notes |
 | --- | --- | --- |
 | **Automatic** (default) | — | Chooses between Large v3 Turbo and Large v3 on its own (see below). |
-| Large v3 Turbo | ~1.6 GB | Almost the same quality as Large v3 in Portuguese, and several times faster. |
-| Large v3 | ~3 GB | Best quality. Downloaded by the installer. |
+| Large v3 Turbo | ~1.6 GB | Almost the same quality as Large v3 in Portuguese, and several times faster. Downloaded by the installer. |
+| Large v3 | ~3 GB | Best quality, and used to translate. Optional: download it on the **Packages** screen. |
 | Large v2 | ~3 GB | Previous version of Large. |
 | Medium | ~1.5 GB | Middle ground. |
 | Small | ~490 MB | Fast, reasonable quality. |

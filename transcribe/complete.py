@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import base64
+import http.client
 import io
 import json
 import math
 import os
 import re
 import shutil
+import socket
 import subprocess
+import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Callable
@@ -25,12 +29,25 @@ Roda in-process na venv do backend: so usa ffmpeg-CLI (subprocess), Pillow e
 urllib. `emit(event)` empurra eventos no mesmo stream SSE do job."""
 
 Emit = Callable[[dict], None]
+Runner = Callable[[list], tuple]
+StopCheck = Callable[[], bool]
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".m4v", ".wmv", ".flv"}
 SCENE_MIN = 3
 SCENE_MAX = 40
 DOC_MAX_IMAGES = 14
 DOC_IMAGE_WIDTH = 768
+VISION_TIMEOUT_S = 600
+STOP_POLL_S = 0.5
+
+
+class Canceled(Exception):
+    pass
+
+
+def check(should_stop: StopCheck | None) -> None:
+    if should_stop is not None and should_stop():
+        raise Canceled()
 
 
 # ───────────────────────── helpers de baixo nivel ─────────────────────────
@@ -73,32 +90,33 @@ def _safe_name(name: str, fallback: str) -> str:
 # ───────────────────────── estagios ─────────────────────────
 
 
-def extract_audio(ff: str, input_path: Path, out_dir: Path) -> Path | None:
+def extract_audio(ff: str, input_path: Path, out_dir: Path, runner: Runner | None = None) -> Path | None:
     audio_dir = out_dir / "_audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
     target = audio_dir / "audio.wav"
-    rc, _ = _run_ff([ff, "-y", "-i", str(input_path), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(target)])
+    rc, _ = (runner or _run_ff)([ff, "-y", "-i", str(input_path), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(target)])
     return target if rc == 0 and target.exists() else None
 
 
-def extract_frames(ff: str, input_path: Path, out_dir: Path, interval: float) -> list[Path]:
+def extract_frames(ff: str, input_path: Path, out_dir: Path, interval: float, runner: Runner | None = None) -> list[Path]:
     frames_dir = out_dir / "frames-todos"
     frames_dir.mkdir(parents=True, exist_ok=True)
     fps = 1.0 / max(0.5, interval)
-    rc, _ = _run_ff([ff, "-y", "-i", str(input_path), "-vf", f"fps={fps:.6f}", "-q:v", "3", str(frames_dir / "frame_%03d.jpg")])
+    rc, _ = (runner or _run_ff)([ff, "-y", "-i", str(input_path), "-vf", f"fps={fps:.6f}", "-q:v", "3", str(frames_dir / "frame_%03d.jpg")])
     return sorted(frames_dir.glob("frame_*.jpg"))
 
 
-def build_contact_sheets(ff: str, out_dir: Path, frames: list[Path]) -> list[str]:
+def build_contact_sheets(ff: str, out_dir: Path, frames: list[Path], runner: Runner | None = None) -> list[str]:
     if not frames:
         return []
+    run_ff = runner or _run_ff
     frames_dir = out_dir / "frames-todos"
     cols = 5
     rows = max(1, math.ceil(len(frames) / cols))
     written: list[str] = []
 
     plain = frames_dir / "contact-sheet.jpg"
-    rc, _ = _run_ff([
+    rc, _ = run_ff([
         ff, "-y", "-i", str(frames_dir / "frame_%03d.jpg"),
         "-vf", f"scale=300:-1,tile={cols}x{rows}:padding=4:color=black",
         "-frames:v", "1", str(plain),
@@ -113,7 +131,7 @@ def build_contact_sheets(ff: str, out_dir: Path, frames: list[Path]) -> list[str
             f"drawtext=fontfile='{font}':text='%{{eif\\:n+1\\:d}}':x=12:y=12:"
             "fontsize=46:fontcolor=white:box=1:boxcolor=black@0.65:boxborderw=8"
         )
-        rc, _ = _run_ff([
+        rc, _ = run_ff([
             ff, "-y", "-i", str(frames_dir / "frame_%03d.jpg"),
             "-vf", f"{draw},scale=300:-1,tile={cols}x{rows}:padding=4:color=black",
             "-frames:v", "1", str(numbered),
@@ -135,10 +153,12 @@ def _drawtext_font() -> str | None:
     return None
 
 
-def detect_scenes(ff: str, input_path: Path, out_dir: Path, threshold: float, frames: list[Path]) -> list[Path]:
+def detect_scenes(
+    ff: str, input_path: Path, out_dir: Path, threshold: float, frames: list[Path], runner: Runner | None = None,
+) -> list[Path]:
     imagens_dir = out_dir / "imagens"
     imagens_dir.mkdir(parents=True, exist_ok=True)
-    rc, _ = _run_ff([
+    rc, _ = (runner or _run_ff)([
         ff, "-y", "-i", str(input_path),
         "-vf", f"select='gt(scene,{threshold:.3f})'", "-vsync", "vfr", "-q:v", "3",
         str(imagens_dir / "cena_%03d.jpg"),
@@ -229,7 +249,104 @@ def _image_data_uri(path: Path, width: int = DOC_IMAGE_WIDTH) -> str | None:
         return None
 
 
-def generate_docs(out_dir: Path, scenes: list[Path], contact_sheets: list[str], transcript_text: str, vision: dict, emit: Emit) -> dict:
+def _shutdown(connection: http.client.HTTPConnection) -> None:
+    sock = connection.sock
+    if sock is not None:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+    connection.close()
+
+
+class _Abort:
+    def __init__(self) -> None:
+        self.event = threading.Event()
+        self.lock = threading.Lock()
+        self.connections: list[http.client.HTTPConnection] = []
+
+    def track(self, base: type) -> type:
+        abort = self
+
+        class Tracked(base):
+            def connect(self) -> None:
+                with abort.lock:
+                    abort.connections.append(self)
+                if abort.event.is_set():
+                    raise Canceled()
+                super().connect()
+                if abort.event.is_set():
+                    _shutdown(self)
+                    raise Canceled()
+
+        return Tracked
+
+    def fire(self) -> None:
+        self.event.set()
+        with self.lock:
+            connections = list(self.connections)
+        for connection in connections:
+            _shutdown(connection)
+
+
+class _TrackedOpen:
+    abort: _Abort
+
+    def do_open(self, http_class, req, **kwargs):
+        return super().do_open(self.abort.track(http_class), req, **kwargs)
+
+
+class _TrackedHTTPHandler(_TrackedOpen, urllib.request.HTTPHandler):
+    pass
+
+
+class _TrackedHTTPSHandler(_TrackedOpen, urllib.request.HTTPSHandler):
+    pass
+
+
+def _post_json(url: str, payload: bytes, headers: dict, should_stop: StopCheck | None) -> tuple[int, bytes]:
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise OSError(url)
+    abort = _Abort()
+    handlers = [_TrackedHTTPHandler(), _TrackedHTTPSHandler()]
+    for handler in handlers:
+        handler.abort = abort
+    opener = urllib.request.build_opener(*handlers)
+    request = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+    box: dict = {}
+
+    def send() -> None:
+        try:
+            with opener.open(request, timeout=VISION_TIMEOUT_S) as response:
+                box["result"] = (response.status, response.read())
+        except urllib.error.HTTPError as exc:
+            with exc:
+                box["result"] = (exc.code, exc.read())
+        except BaseException as exc:
+            box["error"] = exc
+
+    sender = threading.Thread(target=send, name="complete-vision", daemon=True)
+    sender.start()
+    while sender.is_alive():
+        sender.join(STOP_POLL_S)
+        if sender.is_alive() and should_stop is not None and should_stop():
+            abort.fire()
+            raise Canceled()
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
+
+
+def generate_docs(
+    out_dir: Path,
+    scenes: list[Path],
+    contact_sheets: list[str],
+    transcript_text: str,
+    vision: dict,
+    emit: Emit,
+    should_stop: StopCheck | None = None,
+) -> dict:
     base_url = (vision.get("base_url") or "").strip().rstrip("/")
     model = (vision.get("model") or "").strip()
     if not base_url or not model:
@@ -249,6 +366,7 @@ def generate_docs(out_dir: Path, scenes: list[Path], contact_sheets: list[str], 
 
     sent = scenes[:DOC_MAX_IMAGES]
     for scene in sent:
+        check(should_stop)
         uri = _image_data_uri(scene)
         if not uri:
             continue
@@ -268,24 +386,17 @@ def generate_docs(out_dir: Path, scenes: list[Path], contact_sheets: list[str], 
     if (vision.get("api_key") or "").strip():
         headers["Authorization"] = f"Bearer {vision['api_key'].strip()}"
 
-    request = urllib.request.Request(
-        f"{base_url}/chat/completions",
-        data=json.dumps(body).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
+    check(should_stop)
     try:
-        with urllib.request.urlopen(request, timeout=600) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = ""
-        try:
-            detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            detail = ""
-        raise RuntimeError(t("imgpdf.vision.http_error", url=base_url, code=exc.code, detail=detail).strip())
-    except urllib.error.URLError as exc:
-        raise RuntimeError(t("imgpdf.vision.unreachable", url=base_url, reason=exc.reason))
+        status, raw_body = _post_json(
+            f"{base_url}/chat/completions", json.dumps(body).encode("utf-8"), headers, should_stop,
+        )
+    except (OSError, http.client.HTTPException) as exc:
+        raise RuntimeError(t("imgpdf.vision.unreachable", url=base_url, reason=exc))
+    if status >= 300:
+        detail = raw_body.decode("utf-8", errors="replace")
+        raise RuntimeError(t("imgpdf.vision.http_error", url=base_url, code=status, detail=detail).strip())
+    data = json.loads(raw_body.decode("utf-8"))
 
     try:
         raw = data["choices"][0]["message"]["content"]
@@ -362,13 +473,22 @@ def _fallback_readme(out_dir: Path, transcript_text: str, scenes: list[Path]) ->
 # ───────────────────────── entrega ─────────────────────────
 
 
-def deliver(out_dir: Path, job_id: str, slug: str, output_dir: str | None, make_zip: bool, open_folder: bool) -> dict:
+def deliver(
+    out_dir: Path,
+    job_id: str,
+    slug: str,
+    output_dir: str | None,
+    make_zip: bool,
+    open_folder: bool,
+    should_stop: StopCheck | None = None,
+) -> dict:
     result: dict = {"dest_dir": None, "zip": None}
 
     dest = None
     if output_dir and output_dir.strip():
         base = Path(output_dir.strip()).expanduser()
         dest = base / slug
+        check(should_stop)
         try:
             base.mkdir(parents=True, exist_ok=True)
             shutil.copytree(out_dir, dest, dirs_exist_ok=True, ignore=shutil.ignore_patterns("complete.zip", "_uploads"))
@@ -378,6 +498,7 @@ def deliver(out_dir: Path, job_id: str, slug: str, output_dir: str | None, make_
             dest = None
 
     if make_zip:
+        check(should_stop)
         try:
             archive_base = out_dir.parent / f"{job_id}_complete"
             zip_path = shutil.make_archive(str(archive_base), "zip", root_dir=str(out_dir))
@@ -386,6 +507,7 @@ def deliver(out_dir: Path, job_id: str, slug: str, output_dir: str | None, make_
             result["zip_error"] = str(exc)
 
     if open_folder:
+        check(should_stop)
         target = dest or out_dir
         try:
             if os.name == "nt":
@@ -401,27 +523,58 @@ def deliver(out_dir: Path, job_id: str, slug: str, output_dir: str | None, make_
 # ───────────────────────── orquestrador ─────────────────────────
 
 
-def run(job_id: str, input_path: Path, out_dir: Path, segments: list[dict], info: dict, options: dict, emit: Emit) -> dict:
+def empty_manifest(job_id: str, out_dir: Path, options: dict) -> dict:
+    slug = _safe_slug(options.get("output_name") or "", job_id[:8])
+    return {
+        "slug": slug,
+        "title": slug,
+        "out_dir": str(out_dir),
+        "dest_dir": None,
+        "zip": None,
+        "frames": 0,
+        "images": [],
+        "captions": {},
+        "contact_sheets": [],
+        "docs": [],
+        "transcripts": [],
+        "docs_generated": False,
+        "degraded": [],
+    }
+
+
+def run(
+    job_id: str,
+    input_path: Path,
+    out_dir: Path,
+    segments: list[dict],
+    info: dict,
+    options: dict,
+    emit: Emit,
+    run_ff: Runner | None = None,
+    should_stop: StopCheck | None = None,
+) -> dict:
     degraded: list[str] = []
 
     def stage(name: str, status: str = "start", **extra) -> None:
+        check(should_stop)
         emit({"type": "stage", "stage": name, "status": status, **extra})
 
     def progress(pct: float, name: str) -> None:
+        check(should_stop)
         emit({"type": "progress", "pct": max(0.0, min(1.0, pct)), "stage": name})
 
     ff = ffmpeg_exe()
     if not ff:
         stage("complete", "skipped", detail=t("complete.ffmpeg_missing"))
         degraded.append("complete")
-        return {"degraded": degraded, "docs_generated": False}
+        return {**empty_manifest(job_id, out_dir, options), "degraded": degraded}
 
     input_path = Path(input_path)
     is_video = _is_video(input_path)
 
     stage("audio", "start")
     progress(0.05, "audio")
-    extract_audio(ff, input_path, out_dir)
+    extract_audio(ff, input_path, out_dir, run_ff)
     stage("audio", "done")
 
     frames: list[Path] = []
@@ -432,8 +585,10 @@ def run(job_id: str, input_path: Path, out_dir: Path, segments: list[dict], info
         stage("frames", "start")
         progress(0.15, "frames")
         try:
-            frames = extract_frames(ff, input_path, out_dir, float(options.get("frame_interval") or 3.0))
+            frames = extract_frames(ff, input_path, out_dir, float(options.get("frame_interval") or 3.0), run_ff)
             stage("frames", "done", detail=t("complete.frames", count=len(frames)))
+        except Canceled:
+            raise
         except Exception as exc:
             degraded.append("frames")
             stage("frames", "skipped", detail=str(exc))
@@ -442,8 +597,10 @@ def run(job_id: str, input_path: Path, out_dir: Path, segments: list[dict], info
             stage("contact", "start")
             progress(0.30, "contact")
             try:
-                contact_sheets = build_contact_sheets(ff, out_dir, frames)
+                contact_sheets = build_contact_sheets(ff, out_dir, frames, run_ff)
                 stage("contact", "done")
+            except Canceled:
+                raise
             except Exception as exc:
                 degraded.append("contact")
                 stage("contact", "skipped", detail=str(exc))
@@ -451,8 +608,12 @@ def run(job_id: str, input_path: Path, out_dir: Path, segments: list[dict], info
             stage("cenas", "start")
             progress(0.45, "cenas")
             try:
-                scenes = detect_scenes(ff, input_path, out_dir, float(options.get("scene_threshold") or 0.30), frames)
+                scenes = detect_scenes(
+                    ff, input_path, out_dir, float(options.get("scene_threshold") or 0.30), frames, run_ff,
+                )
                 stage("cenas", "done", detail=t("complete.scenes", count=len(scenes)))
+            except Canceled:
+                raise
             except Exception as exc:
                 degraded.append("cenas")
                 stage("cenas", "skipped", detail=str(exc))
@@ -475,12 +636,16 @@ def run(job_id: str, input_path: Path, out_dir: Path, segments: list[dict], info
         stage("docs", "start")
         progress(0.70, "docs")
         try:
-            doc_meta = generate_docs(out_dir, scenes, contact_sheets, transcript_text, options.get("vision") or {}, emit)
+            doc_meta = generate_docs(
+                out_dir, scenes, contact_sheets, transcript_text, options.get("vision") or {}, emit, should_stop,
+            )
             docs_written = doc_meta.get("docs") or []
             if doc_meta.get("slug") and not (options.get("output_name") or "").strip():
                 slug = _safe_slug(doc_meta["slug"], slug)
             docs_generated = bool(docs_written)
             stage("docs", "done")
+        except Canceled:
+            raise
         except Exception as exc:
             degraded.append("docs")
             stage("docs", "skipped", detail=str(exc))
@@ -497,6 +662,7 @@ def run(job_id: str, input_path: Path, out_dir: Path, segments: list[dict], info
         options.get("output_dir"),
         bool(options.get("make_zip")),
         bool(options.get("open_folder")),
+        should_stop,
     )
     stage("entrega", "done")
     progress(1.0, "complete")
@@ -506,6 +672,7 @@ def run(job_id: str, input_path: Path, out_dir: Path, segments: list[dict], info
     captions = {Path(item.get("file", "")).name: item.get("caption") for item in (doc_meta.get("images") or []) if isinstance(item, dict)}
 
     manifest = {
+        **empty_manifest(job_id, out_dir, options),
         "slug": slug,
         "title": doc_meta.get("title") or slug,
         "out_dir": str(out_dir),

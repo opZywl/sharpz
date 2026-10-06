@@ -281,7 +281,11 @@ def run_whisperx(args, degraded: list[str], emit_fn=emit):
     emit_fn({"type": "progress", "pct": 0.5, "stage": "transcribe"})
     emit_fn(stage_event("transcribe", "done"))
 
-    result = _align(whisperx, result, audio, detected_lang, degraded, emit_fn)
+    if args.translate:
+        degraded.append("align")
+        emit_fn(stage_event("align", "skipped", t("transcribe.align_translate")))
+    else:
+        result = _align(whisperx, result, audio, detected_lang, degraded, emit_fn)
     gc.collect()
     result = _diarize(whisperx, args, result, audio, degraded, emit_fn)
     gc.collect()

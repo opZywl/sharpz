@@ -66,7 +66,7 @@ PARTIAL_SUFFIXES = (".part", ".ytdl", ".tmp", ".temp")
 _LOG_LOCK = threading.Lock()
 
 
-class JobCanceled(Exception):
+class JobCanceled(complete_mod.Canceled):
     pass
 
 
@@ -205,15 +205,40 @@ def save_stream(source, target: Path, chunk_size: int = 1024 * 1024) -> tuple[in
     digest = hashlib.sha1()
     size = 0
     target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("wb") as handle:
-        while True:
-            chunk = source.read(chunk_size)
-            if not chunk:
-                break
-            digest.update(chunk)
-            handle.write(chunk)
-            size += len(chunk)
+    try:
+        with target.open("wb") as handle:
+            while True:
+                chunk = source.read(chunk_size)
+                if not chunk:
+                    break
+                digest.update(chunk)
+                handle.write(chunk)
+                size += len(chunk)
+    except BaseException:
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     return size, digest.hexdigest()
+
+
+def prune_uploads(upload_dir: Path = UPLOAD_DIR, max_age_s: float = 24 * 3600, now: float | None = None) -> int:
+    cutoff = (time.time() if now is None else now) - max_age_s
+    removed = 0
+    try:
+        entries = list(Path(upload_dir).iterdir())
+    except OSError:
+        return 0
+    for entry in entries:
+        try:
+            info = entry.lstat()
+            if stat.S_ISREG(info.st_mode) and info.st_mtime < cutoff:
+                entry.unlink()
+                removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 def job_fingerprint(options: dict) -> str:
@@ -424,7 +449,21 @@ class WorkerClient:
     def shutdown(self) -> None:
         with self._lock:
             proc = self._proc
-        _kill(proc)
+            self._proc = None
+            self._pump = None
+            self._current = None
+        if proc is None:
+            return
+        try:
+            if proc.stdin:
+                proc.stdin.close()
+        except OSError:
+            pass
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _kill(proc)
+        _wait(proc)
 
     def run(self, job_id: str, args: dict, on_event, is_stopped) -> tuple[str, dict]:
         request = json.dumps({"type": "job", "job_id": job_id, "args": args, "lang": get_lang()}) + "\n"
@@ -480,6 +519,7 @@ class JobStore:
     ) -> None:
         self.output_root = Path(output_root)
         self.log_path = self.output_root / "_worker.log"
+        self.upload_dir = self.output_root / "_uploads"
         self.engine_cmd = list(engine_cmd or [VENV_PYTHON, "-m", "transcribe.engine"])
         self.heartbeat_s = heartbeat_s
         self.use_worker = os.environ.get("SHARPZ_WORKER", "1") != "0" if use_worker is None else use_worker
@@ -623,11 +663,32 @@ class JobStore:
                 self._pending.remove(job_id)
             running = job["status"] == "running"
             proc = job.get("proc")
+            input_path = job.get("input_path")
             self._close_locked(job, "canceled")
         if running:
             _kill(proc)
             self.worker.cancel(job_id)
+        else:
+            self._discard_upload(input_path)
         return {"ok": True, "status": "canceled"}
+
+    def _discard_upload(self, input_path) -> None:
+        if not input_path:
+            return
+        try:
+            path = Path(input_path).resolve()
+            if self.upload_dir.resolve() in path.parents:
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _discard_failed_upload(self, job_id: str) -> None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or job["status"] not in ("canceled", "error"):
+                return
+            input_path = job.get("input_path")
+        self._discard_upload(input_path)
 
     def _append_locked(self, job: dict, event: dict) -> None:
         job["events"].append(event)
@@ -702,13 +763,16 @@ class JobStore:
                 if job is None or job["closed"]:
                     continue
                 job["status"] = "running"
-                job["stage"] = "start"
+                started = {"type": "stage", "stage": "start", "status": "start", "detail": ""}
+                _apply_event(job, started)
+                self._append_locked(job, started)
                 lang = job.get("lang")
             with use_lang(lang):
                 try:
                     self._process(job_id)
                 except Exception as exc:
                     self._finish(job_id, "error", error=t("transcribe.unexpected", error=exc))
+                    self._discard_failed_upload(job_id)
 
     def _process(self, job_id: str) -> None:
         with self._lock:
@@ -734,6 +798,8 @@ class JobStore:
             result = self._transcribe(job_id, _engine_args(options, input_path, out_dir, job_id), options)
             files = result.get("files") or {}
             if options.get("mode") == "complete":
+                if options.get("gen_docs"):
+                    self.worker.shutdown()
                 self._run_complete(job_id, options, Path(input_path), out_dir)
             text = self._read_text(job_id, out_dir, files)
             self._finish(job_id, "done", text=text, elapsed=round(time.perf_counter() - started, 2))
@@ -750,6 +816,7 @@ class JobStore:
             )
         finally:
             self._detach(job_id)
+            self._discard_failed_upload(job_id)
 
     def _transcribe(self, job_id: str, args: dict, options: dict) -> dict:
         self._check_stopped(job_id)
@@ -763,6 +830,7 @@ class JobStore:
             if kind != "nostart":
                 return self._outcome(job_id, kind, payload)
             _log(self.log_path, "worker", f"motor quente indisponível, usando o motor avulso: {payload.get('detail') or payload.get('code')}")
+        self.worker.shutdown()
         return self._run_engine(job_id, args, options)
 
     def _outcome(self, job_id: str, kind: str, payload: dict) -> dict:
@@ -861,6 +929,23 @@ class JobStore:
         self._handle_event(job_id, {"type": "stage", "stage": "download", "status": "done", "detail": ""})
         return candidates[0]
 
+    def _run_ff(self, job_id: str, argv: list) -> tuple[int, str]:
+        self._check_stopped(job_id)
+        proc = subprocess.Popen(
+            [str(item) for item in argv],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=PRIORITY_FLAGS,
+        )
+        self._attach(job_id, proc)
+        try:
+            code = proc.wait()
+        finally:
+            self._detach(job_id)
+        self._check_stopped(job_id)
+        return code, ""
+
     def _run_complete(self, job_id: str, options: dict, input_path: Path, out_dir: Path) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
@@ -875,9 +960,15 @@ class JobStore:
             self._handle_event(job_id, event)
 
         try:
-            manifest = complete_mod.run(job_id, input_path, out_dir, segments, info, options, emit)
+            manifest = complete_mod.run(
+                job_id, input_path, out_dir, segments, info, options, emit,
+                run_ff=lambda argv: self._run_ff(job_id, argv),
+                should_stop=lambda: self._stopped(job_id),
+            )
         except JobCanceled:
             raise
+        except complete_mod.Canceled as exc:
+            raise JobCanceled() from exc
         except Exception as exc:
             emit({"type": "stage", "stage": "complete", "status": "skipped", "detail": str(exc)})
             return
@@ -885,6 +976,7 @@ class JobStore:
             job = self._jobs.get(job_id)
             if job is None or job["closed"]:
                 return
+            manifest = {**complete_mod.empty_manifest(job_id, out_dir, options), **(manifest or {})}
             job["complete"] = manifest
             for stage in manifest.get("degraded", []):
                 if stage not in job["degraded"]:

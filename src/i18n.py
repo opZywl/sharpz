@@ -386,6 +386,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "pt-BR": "Sem token do Hugging Face: informe o HF_TOKEN para separar os locutores.",
         "en": "No Hugging Face token: set HF_TOKEN to separate the speakers.",
     },
+    "transcribe.align_translate": {
+        "pt-BR": "O texto traduzido não pode ser alinhado palavra por palavra; os locutores são atribuídos por trecho.",
+        "en": "Translated text cannot be aligned word by word; speakers are assigned per segment.",
+    },
+    "transcribe.upload_canceled": {
+        "pt-BR": "O envio foi cancelado antes de criar a transcrição.",
+        "en": "The upload was canceled before the job was created.",
+    },
     "transcribe.whisperx_unavailable": {
         "pt-BR": "whisperX indisponível: {error}",
         "en": "whisperX unavailable: {error}",
@@ -968,13 +976,25 @@ MESSAGES: dict[str, dict[str, str]] = {
         "pt-BR": "Requer uv instalado.",
         "en": "Requires uv.",
     },
+    "packages.model_large_v3_turbo.name": {
+        "pt-BR": "Modelo large-v3-turbo",
+        "en": "large-v3-turbo model",
+    },
+    "packages.model_large_v3_turbo.description": {
+        "pt-BR": "Modelo rápido e multilíngue usado pelo modo automático. Baixado uma vez e guardado em cache.",
+        "en": "Fast multilingual model used by the automatic mode. Downloaded once and cached.",
+    },
+    "packages.model_large_v3_turbo.manual_hint": {
+        "pt-BR": "Requer o Motor de transcrição instalado.",
+        "en": "Requires the transcription engine.",
+    },
     "packages.model_large_v3.name": {
         "pt-BR": "Modelo large-v3",
         "en": "large-v3 model",
     },
     "packages.model_large_v3.description": {
-        "pt-BR": "Modelo de transcrição de máxima qualidade (multilíngue). Baixado uma vez e guardado em cache.",
-        "en": "Top-quality transcription model (multilingual). Downloaded once and cached.",
+        "pt-BR": "Opcional: melhor qualidade e usado na tradução para inglês. Mais lento que o turbo.",
+        "en": "Optional: best quality, and used to translate into English. Slower than turbo.",
     },
     "packages.model_large_v3.manual_hint": {
         "pt-BR": "Requer o Motor de transcrição instalado.",
@@ -1042,6 +1062,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "pt-BR": "Diarização",
         "en": "Speaker separation",
     },
+    "packages.unlock.transcription_fast": {
+        "pt-BR": "Transcrição rápida (large-v3-turbo)",
+        "en": "Fast transcription (large-v3-turbo)",
+    },
     "packages.unlock.transcription_large": {
         "pt-BR": "Transcrição large-v3",
         "en": "large-v3 transcription",
@@ -1087,12 +1111,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "faster-whisper (no whisperX: alignment/speaker separation off)",
     },
     "packages.detail.model_missing": {
-        "pt-BR": "large-v3 não baixado",
-        "en": "large-v3 not downloaded",
+        "pt-BR": "{model} não baixado",
+        "en": "{model} not downloaded",
     },
     "packages.detail.model_ready": {
-        "pt-BR": "large-v3 pronto ({size} MB)",
-        "en": "large-v3 ready ({size} MB)",
+        "pt-BR": "{model} pronto ({size} MB)",
+        "en": "{model} ready ({size} MB)",
     },
     "packages.detail.model_partial": {
         "pt-BR": "download incompleto",

@@ -11,8 +11,8 @@ Transforma áudio e vídeo em texto. Solte o arquivo, informe um caminho do comp
 | Modelo | Tamanho | Observação |
 | --- | --- | --- |
 | **Automático** (padrão) | — | Escolhe sozinho entre o Large v3 Turbo e o Large v3 (veja abaixo). |
-| Large v3 Turbo | ~1,6 GB | Quase a mesma qualidade do Large v3 em português e várias vezes mais rápido. |
-| Large v3 | ~3 GB | Melhor qualidade. Baixado pelo instalador. |
+| Large v3 Turbo | ~1,6 GB | Quase a mesma qualidade do Large v3 em português e várias vezes mais rápido. Baixado pelo instalador. |
+| Large v3 | ~3 GB | Melhor qualidade e usado na tradução. Opcional: baixe na tela **Baixar pacotes**. |
 | Large v2 | ~3 GB | Versão anterior do Large. |
 | Medium | ~1,5 GB | Meio-termo. |
 | Small | ~490 MB | Rápido, qualidade razoável. |

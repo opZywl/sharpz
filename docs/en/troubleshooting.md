@@ -38,7 +38,7 @@ Run `.\sharpz.cmd install`. It installs everything Portfolio KTX needs.
 ## Transcription does not start
 
 - Check in **Packages** that **FFmpeg** and the **transcription engine** are installed.
-- On the first transcription, the model is downloaded (Large v3 is ~3 GB); follow the progress on screen.
+- If the installer could not download the model, the first transcription downloads it (Large v3 Turbo is ~1.6 GB, Large v3 is ~3 GB); follow the progress on screen.
 
 ## Speaker separation does not work
 

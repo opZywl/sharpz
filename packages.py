@@ -1,7 +1,7 @@
 """Central de Pacotes do Sharpz.
 
 Detecta tudo que o Sharpz precisa pra funcionar 100% (Node, uv, ffmpeg, motor de
-transcricao, modelo large-v3, toktx/KTX-Software, Ollama, node_modules) e instala
+transcricao, modelos large-v3-turbo e large-v3, toktx/KTX-Software, Ollama, node_modules) e instala
 cada item com 1 clique, transmitindo o log ao vivo via SSE.
 
 Sem dependencias externas: so stdlib (subprocess/threading/queue/urllib/winreg).
@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from src.i18n import get_lang, t, use_lang
+from transcribe import jobs as transcribe_jobs
 
 REPO_ROOT = Path(__file__).resolve().parent
 WHISPER_VENV = REPO_ROOT / "whisper-venv"
@@ -113,12 +114,6 @@ def _version_of(args: list[str]) -> str:
         return ""
 
 
-def _hf_cache_dir() -> Path:
-    home = os.environ.get("HF_HOME")
-    base = Path(home) if home else (Path.home() / ".cache" / "huggingface")
-    return base / "hub"
-
-
 def _check_node() -> tuple[bool, str]:
     path = _which("node")
     if not path:
@@ -160,18 +155,16 @@ def _check_whisper_engine() -> tuple[bool, str]:
     return False, t("packages.detail.engine_missing")
 
 
-def _check_model() -> tuple[bool, str]:
-    base = _hf_cache_dir() / "models--Systran--faster-whisper-large-v3"
-    if not base.exists():
-        return False, t("packages.detail.model_missing")
-    for model_bin in base.glob("snapshots/*/model.bin"):
-        try:
-            size = model_bin.stat().st_size
-        except OSError:
-            continue
-        if size > 500 * 1024 * 1024:
-            return True, t("packages.detail.model_ready", size=size // (1024 * 1024))
-    return False, t("packages.detail.model_partial")
+def _check_model_key(key: str) -> Callable[[], tuple[bool, str]]:
+    def check() -> tuple[bool, str]:
+        if transcribe_jobs.model_cached(key):
+            size = transcribe_jobs.repo_bytes(key) // (1024 * 1024)
+            return True, t("packages.detail.model_ready", model=key, size=size)
+        if transcribe_jobs.repo_bytes(key) > 0:
+            return False, t("packages.detail.model_partial")
+        return False, t("packages.detail.model_missing", model=key)
+
+    return check
 
 
 _TOKTX_DIRS = [
@@ -286,12 +279,15 @@ def _install_whisper_engine(emit: Emit) -> int:
     return 0
 
 
-def _install_model(emit: Emit) -> int:
-    if not WHISPER_PY.exists():
-        emit(t("packages.log.engine_missing"))
-        return 1
-    env = _refreshed_env()
-    return _stream_cmd([str(WHISPER_PY), str(REPO_ROOT / "tools" / "download_model.py"), "large-v3"], emit, env=env)
+def _install_model_key(key: str) -> Callable[[Emit], int]:
+    def install(emit: Emit) -> int:
+        if not WHISPER_PY.exists():
+            emit(t("packages.log.engine_missing"))
+            return 1
+        env = _refreshed_env()
+        return _stream_cmd([str(WHISPER_PY), str(REPO_ROOT / "tools" / "download_model.py"), key], emit, env=env)
+
+    return install
 
 
 def _install_toktx(emit: Emit) -> int:
@@ -398,10 +394,19 @@ PACKAGES: list[Package] = [
         unlocks=["packages.unlock.transcription", "packages.unlock.word_timing", "packages.unlock.diarization"],
     ),
     Package(
+        id="model_large_v3_turbo", name="packages.model_large_v3_turbo.name",
+        description="packages.model_large_v3_turbo.description",
+        category="transcricao", optional=False, size_hint="~1.6 GB",
+        checker=_check_model_key(transcribe_jobs.FAST_MODEL), installer=_install_model_key(transcribe_jobs.FAST_MODEL),
+        manual_hint="packages.model_large_v3_turbo.manual_hint",
+        unlocks=["packages.unlock.transcription_fast"],
+    ),
+    Package(
         id="model_large_v3", name="packages.model_large_v3.name",
         description="packages.model_large_v3.description",
-        category="transcricao", optional=False, size_hint="~3 GB",
-        checker=_check_model, installer=_install_model,
+        category="transcricao", optional=True, size_hint="~3 GB",
+        checker=_check_model_key(transcribe_jobs.ACCURATE_MODEL),
+        installer=_install_model_key(transcribe_jobs.ACCURATE_MODEL),
         manual_hint="packages.model_large_v3.manual_hint",
         unlocks=["packages.unlock.transcription_large"],
     ),
