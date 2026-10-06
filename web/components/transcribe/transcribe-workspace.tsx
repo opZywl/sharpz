@@ -42,10 +42,14 @@ import { TranscriptResult } from "@/components/transcribe/transcript-result"
 import { useTranscribeJob } from "@/components/transcribe/use-transcribe-job"
 import { Button } from "@/components/ui/button"
 import { Segmented } from "@/components/ui/segmented"
+import { busyKeys } from "@/lib/busy-message"
+import { wordTimestampsAvailable } from "@/lib/capabilities"
 import { appendFields } from "@/lib/dashboard-utils"
 import type { Message, Messages } from "@/lib/i18n"
 import { useI18n } from "@/lib/i18n/provider"
+import { dragKind, droppedUrl, httpUrl, pasteIntent } from "@/lib/paste-intent"
 import { getCapabilities, getModels, type TranscribeCapabilities, type TranscribeModels } from "@/lib/transcribe-api"
+import { exceedsProxyLimit, isDirectUpload } from "@/lib/upload-target"
 import { cn } from "@/lib/utils"
 
 interface TranscribeOptions {
@@ -68,13 +72,16 @@ type ActionKind = "run" | "runAgain" | "retry"
 interface FormMessage {
     tone: "error" | "info"
     text: Message
-    busy?: boolean
+    ready?: Message
 }
 
 const AUTO_MODEL = "auto"
 const KNOWN_MODELS = new Set([AUTO_MODEL, ...MODEL_FALLBACK.map((entry) => entry.key)])
-const BUSY_MESSAGE: FormMessage = { tone: "info", text: (t) => t.transcribe.busy, busy: true }
-const READY_MESSAGE: FormMessage = { tone: "info", text: (t) => t.transcribe.ready }
+
+function busyMessage(kind: SourceKind): FormMessage {
+    const keys = busyKeys(kind)
+    return { tone: "info", text: (t) => t.transcribe[keys.busy], ready: (t) => t.transcribe[keys.ready] }
+}
 
 const DEFAULT_OPTIONS: TranscribeOptions = {
     language: "pt",
@@ -138,6 +145,18 @@ function describeSource(source: Source | null, t: Messages, formatBytes: (bytes:
     if (source.kind === "file") return { kind: "file", title: source.file.name, subtitle: formatBytes(source.file.size) }
     if (source.kind === "path") return { kind: "path", title: pathTail(source.path), subtitle: t.transcribe.pathSource(source.path) }
     return { kind: "url", title: source.url, subtitle: t.transcribe.urlSource }
+}
+
+function isEditableTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false
+    return (
+        target.isContentEditable ||
+        Boolean(
+            target.closest(
+                "textarea, select, input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=reset]):not([type=file]):not([type=range]):not([type=color])",
+            ),
+        )
+    )
 }
 
 function OptionGroup({ title, children }: { title: string; children: React.ReactNode }) {
@@ -282,7 +301,7 @@ export function TranscribeWorkspace() {
 
     function startWith(next: Source, note: Message | null = null) {
         if (busy) {
-            setMessage(BUSY_MESSAGE)
+            setMessage(busyMessage(next.kind))
             return
         }
         setMessage(note ? { tone: "info", text: note } : null)
@@ -291,6 +310,7 @@ export function TranscribeWorkspace() {
             sourceName: sourceName(next, t.transcribe.defaultName),
             mode: complete.enabled ? "complete" : "standard",
             uploading: next.kind === "file",
+            sourceBytes: next.kind === "file" ? next.file.size : null,
         })
     }
 
@@ -303,11 +323,15 @@ export function TranscribeWorkspace() {
             setMessage({ tone: "error", text: (m) => m.transcribe.emptyFile(picked.name) })
             return
         }
+        if (exceedsProxyLimit(picked.size, isDirectUpload(window.location))) {
+            setMessage({ tone: "error", text: (m) => m.transcribe.tooLarge })
+            return
+        }
         setFile(picked)
         setSourceKind("file")
         const note: Message | null = count > 1 ? (m) => m.transcribe.oneAtATime : null
         if (busy) {
-            setMessage(BUSY_MESSAGE)
+            setMessage(busyMessage("file"))
             return
         }
         if (options.autoStart) startWith({ kind: "file", file: picked }, note)
@@ -315,6 +339,19 @@ export function TranscribeWorkspace() {
     }
 
     const acceptFileRef = useLatest(acceptFile)
+
+    function acceptUrl(link: string) {
+        setUrl(link)
+        setSourceKind("url")
+        if (busy) {
+            setMessage(busyMessage("url"))
+            return
+        }
+        if (options.autoStart) startWith({ kind: "url", url: link })
+        else setMessage({ tone: "info", text: (m) => m.transcribe.linkReady })
+    }
+
+    const acceptUrlRef = useLatest(acceptUrl)
 
     const recorder = useMicRecorder(
         (recorded) => acceptFile(recorded),
@@ -324,53 +361,84 @@ export function TranscribeWorkspace() {
 
     useEffect(() => {
         let depth = 0
-        const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes("Files")
+        let fromPage = false
+        const kindOf = (event: DragEvent) => dragKind(Array.from(event.dataTransfer?.types ?? []), fromPage)
+        const onDragStart = () => {
+            fromPage = true
+        }
+        const onDragEnd = () => {
+            fromPage = false
+        }
         const onDragEnter = (event: DragEvent) => {
-            if (!hasFiles(event)) return
+            if (!kindOf(event)) return
             depth += 1
             setDragging(true)
         }
         const onDragOver = (event: DragEvent) => {
-            if (!hasFiles(event)) return
+            if (!kindOf(event)) return
             event.preventDefault()
             if (event.dataTransfer) event.dataTransfer.dropEffect = "copy"
         }
         const onDragLeave = (event: DragEvent) => {
-            if (!hasFiles(event)) return
+            if (!kindOf(event)) return
             depth = Math.max(0, depth - 1)
             if (depth === 0) setDragging(false)
         }
         const onDrop = (event: DragEvent) => {
-            if (!hasFiles(event)) return
-            event.preventDefault()
+            const kind = kindOf(event)
+            if (!kind) return
             depth = 0
             setDragging(false)
+            if (kind === "link") {
+                if (isEditableTarget(event.target)) return
+                event.preventDefault()
+                const link = droppedUrl(event.dataTransfer?.getData("text/uri-list") ?? "", event.dataTransfer?.getData("text/plain") ?? "")
+                if (link) acceptUrlRef.current(link)
+                return
+            }
+            event.preventDefault()
             const dropped = Array.from(event.dataTransfer?.files ?? [])
             if (dropped[0]) acceptFileRef.current(dropped[0], dropped.length)
         }
         const onPaste = (event: ClipboardEvent) => {
             const pasted = Array.from(event.clipboardData?.files ?? [])
-            if (!pasted[0]) return
-            event.preventDefault()
-            acceptFileRef.current(pasted[0], pasted.length)
+            const text = event.clipboardData?.getData("text/plain") ?? ""
+            const intent = pasteIntent({
+                editableTarget: isEditableTarget(event.target),
+                hasMediaFile: Boolean(pasted[0] && isMediaFile(pasted[0])),
+                hasFile: pasted.length > 0,
+                text,
+            })
+            const link = httpUrl(text)
+            if (intent === "file" || intent === "reject-file") {
+                if (intent === "file") event.preventDefault()
+                acceptFileRef.current(pasted[0], pasted.length)
+            } else if (intent === "url" && link) {
+                event.preventDefault()
+                acceptUrlRef.current(link)
+            }
         }
+        document.addEventListener("dragstart", onDragStart)
+        document.addEventListener("dragend", onDragEnd)
         document.addEventListener("dragenter", onDragEnter)
         document.addEventListener("dragover", onDragOver)
         document.addEventListener("dragleave", onDragLeave)
         document.addEventListener("drop", onDrop)
         document.addEventListener("paste", onPaste)
         return () => {
+            document.removeEventListener("dragstart", onDragStart)
+            document.removeEventListener("dragend", onDragEnd)
             document.removeEventListener("dragenter", onDragEnter)
             document.removeEventListener("dragover", onDragOver)
             document.removeEventListener("dragleave", onDragLeave)
             document.removeEventListener("drop", onDrop)
             document.removeEventListener("paste", onPaste)
         }
-    }, [acceptFileRef])
+    }, [acceptFileRef, acceptUrlRef])
 
     useEffect(() => {
         if (busy) return
-        setMessage((current) => (current?.busy ? READY_MESSAGE : current))
+        setMessage((current) => (current?.ready ? { tone: "info", text: current.ready } : current))
     }, [busy])
 
     function handleTranscribe() {
@@ -709,7 +777,7 @@ export function TranscribeWorkspace() {
                                         <OptionGroup title={t.transcribe.groups.installed}>
                                             <div className="flex flex-wrap gap-2">
                                                 <CapabilityPill label="ffmpeg" ok={capabilities.ffmpeg} />
-                                                <CapabilityPill label={t.transcribe.words} ok={capabilities.whisperx} />
+                                                <CapabilityPill label={t.transcribe.words} ok={wordTimestampsAvailable(capabilities)} />
                                                 <CapabilityPill label={t.transcribe.diarization} ok={capabilities.diarization} />
                                             </div>
                                         </OptionGroup>
@@ -734,12 +802,12 @@ export function TranscribeWorkspace() {
             ) : null}
 
             {state.mode === "complete" && state.phase === "done" && state.jobId ? (
-                <CompletePackagePanel key={state.jobId} jobId={state.jobId} initial={state.complete} />
+                <CompletePackagePanel key={`complete-${state.jobId}`} jobId={state.jobId} initial={state.complete} />
             ) : null}
 
             {state.phase === "done" && state.jobId ? (
                 <SummaryPanel
-                    key={state.jobId}
+                    key={`summary-${state.jobId}`}
                     jobId={state.jobId}
                     language={state.language ?? (options.language === "auto" ? undefined : options.language)}
                     fileBase={fileBase}

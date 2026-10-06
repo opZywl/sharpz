@@ -1,5 +1,7 @@
+import { normalizeCompleteManifest, type CompleteManifest } from "@/lib/complete-manifest"
 import { apiFetch, responseError } from "@/lib/dashboard-utils"
 import { LocalizedError, getActiveLang, withLang, type Lang } from "@/lib/i18n"
+import { uploadEndpoint } from "@/lib/upload-target"
 
 export type TranscribeStatus = "queued" | "running" | "done" | "error" | "canceled"
 
@@ -39,24 +41,11 @@ export interface TranscribeCapabilities {
     whisperx: boolean
     diarization: boolean
     venv: boolean
+    word_timestamps?: boolean
     default_model: string
 }
 
-export interface CompleteManifest {
-    slug: string
-    title: string
-    out_dir: string
-    dest_dir: string | null
-    zip: string | null
-    frames: number
-    images: string[]
-    captions: Record<string, string | null>
-    contact_sheets: string[]
-    docs: string[]
-    transcripts: string[]
-    docs_generated: boolean
-    degraded: string[]
-}
+export type { CompleteManifest } from "@/lib/complete-manifest"
 
 export interface TranscribeJob {
     job_id: string
@@ -91,6 +80,7 @@ export interface StartTranscriptionResult {
 
 export interface StartTranscriptionOptions {
     onUploadProgress?: (fraction: number) => void
+    onUploadSent?: () => void
     signal?: AbortSignal
 }
 
@@ -158,7 +148,7 @@ export function startTranscription(
     options: StartTranscriptionOptions = {},
 ): Promise<StartTranscriptionResult> {
     return new Promise((resolve, reject) => {
-        const { signal, onUploadProgress } = options
+        const { signal, onUploadProgress, onUploadSent } = options
         if (signal?.aborted) {
             reject(new DOMException("Upload canceled.", "AbortError"))
             return
@@ -166,11 +156,12 @@ export function startTranscription(
         const xhr = new XMLHttpRequest()
         const abort = () => xhr.abort()
         const settle = () => signal?.removeEventListener("abort", abort)
-        xhr.open("POST", BASE)
+        xhr.open("POST", uploadEndpoint(window.location))
         xhr.setRequestHeader("Accept-Language", getActiveLang())
         xhr.upload.onprogress = (event) => {
             if (event.lengthComputable && event.total > 0) onUploadProgress?.(event.loaded / event.total)
         }
+        xhr.upload.onload = () => onUploadSent?.()
         xhr.onload = () => {
             settle()
             if (xhr.status < 200 || xhr.status >= 300) {
@@ -245,8 +236,8 @@ export function summarize(jobId: string, options: SummarizeOptions): Promise<Sum
     })
 }
 
-export function getComplete(jobId: string): Promise<CompleteManifest> {
-    return request<CompleteManifest>(`/jobs/${jobId}/complete`)
+export async function getComplete(jobId: string): Promise<CompleteManifest | null> {
+    return normalizeCompleteManifest(await request<unknown>(`/jobs/${jobId}/complete`))
 }
 
 export function completeFileUrl(jobId: string, path: string, lang?: Lang): string {

@@ -6,10 +6,11 @@ import {
     Minimize2, Minus, Moon, Plus, Redo2, RotateCw, Save, SendToBack, Settings2, Shapes, Slash, Square,
     Sun, Trash2, Type, Underline, Undo2, Unlock, Upload, ZoomIn, ZoomOut,
 } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { createElement, useCallback, useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { EditorElement, ElType, importDoc, renderHtml, renderPng } from "@/lib/editor-api"
+import { ICON_NAMES, iconShapes, iconSvgInner } from "@/lib/editor-icons"
 import { dictionaries, errorText, pick, type Messages } from "@/lib/i18n"
 import { useI18n, useMessage } from "@/lib/i18n/provider"
 
@@ -25,23 +26,12 @@ const SYSTEM_FONTS = ["Arial", "Georgia", "Times New Roman", "Courier New", "Ver
 const ALL_FONTS = [...GOOGLE_FONTS, ...SYSTEM_FONTS]
 const LS_KEY = "sharpz-editor-doc-v1"
 
-const ICONS: Record<string, string> = {
-    star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
-    heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
-    check: '<polyline points="20 6 9 17 4 12"/>',
-    mail: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-10 5L2 7"/>',
-    phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>',
-    pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
-    globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
-    calendar: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/>',
-    award: '<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>',
-    code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
-    briefcase: '<rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>',
-    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/>',
-    link: '<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
-    arrow: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
-    sparkles: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>',
-    github: '<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>',
+function IconSvg({ name, size }: { name: unknown; size: string }) {
+    return (
+        <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            {iconShapes(name).map((shape, index) => createElement(shape.tag, { key: index, ...shape.attrs }))}
+        </svg>
+    )
 }
 
 function seedTexts(m: Messages): Record<string, string> {
@@ -284,7 +274,7 @@ export function EditorTool() {
             const rot = el.rotation ? `transform:rotate(${el.rotation}deg);transform-origin:center;` : ""
             const op = el.opacity != null && el.opacity < 1 ? `opacity:${el.opacity};` : ""
             const base = `position:absolute;left:${el.x}pt;top:${el.y}pt;${rot}${op}`
-            if (el.type === "icon") return `<div style="${base}width:${el.fontSize}pt;height:${el.fontSize}pt;color:${el.color}"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[el.icon || "star"]}</svg></div>`
+            if (el.type === "icon") return `<div style="${base}width:${el.fontSize}pt;height:${el.fontSize}pt;color:${el.color}"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${iconSvgInner(el.icon)}</svg></div>`
             if (el.type === "rect") return `<div style="${base}width:${el.w}pt;height:${el.h}pt;background:${el.fill || "transparent"};border:1pt solid ${el.color};border-radius:4pt"></div>`
             if (el.type === "line") return `<div style="${base}width:${el.w}pt;height:${Math.max(1, el.h || 2)}pt;background:${el.color}"></div>`
             if (el.type === "image") return `<img src="${el.src}" style="${base}width:${el.w}pt;height:${el.h}pt;object-fit:contain"/>`
@@ -329,7 +319,7 @@ export function EditorTool() {
                     <Button variant="outline" size="sm" onClick={addText}><Type className="size-4" /> {t.editor.text}</Button>
                     <div className="relative">
                         <Button variant="outline" size="sm" onClick={() => setMenu(menu === "icon" ? "" : "icon")}><Shapes className="size-4" /> {t.editor.icon}</Button>
-                        {menu === "icon" ? <div className="pop grid grid-cols-5 gap-1 p-2" style={{ top: "calc(100% + 6px)", left: 0, width: 220 }}>{Object.keys(ICONS).map((n) => <button key={n} className="icon-btn" title={pick(t.editor.icons, n) ?? n} aria-label={pick(t.editor.icons, n) ?? n} onClick={() => addIcon(n)} dangerouslySetInnerHTML={{ __html: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>` }} />)}</div> : null}
+                        {menu === "icon" ? <div className="pop grid grid-cols-5 gap-1 p-2" style={{ top: "calc(100% + 6px)", left: 0, width: 220 }}>{ICON_NAMES.map((n) => <button key={n} className="icon-btn" title={pick(t.editor.icons, n) ?? n} aria-label={pick(t.editor.icons, n) ?? n} onClick={() => addIcon(n)}><IconSvg name={n} size="16" /></button>)}</div> : null}
                     </div>
                     <div className="relative">
                         <Button variant="outline" size="sm" onClick={() => setMenu(menu === "shape" ? "" : "shape")}><Square className="size-4" /> {t.editor.shape}</Button>
@@ -416,7 +406,7 @@ export function EditorTool() {
                             const onpd = (e: React.PointerEvent) => onDown(e, el.id)
                             const onctx = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (!isSel) setSelected([el.id]); const host = wrapRef.current!.getBoundingClientRect(); setCtx({ sx: e.clientX - host.left, sy: e.clientY - host.top }) }
                             let inner
-                            if (el.type === "icon") inner = <div onPointerDown={onpd} onContextMenu={onctx} style={{ ...common, width: el.fontSize * scale, height: el.fontSize * scale, color: el.color }} dangerouslySetInnerHTML={{ __html: `<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[el.icon || "star"]}</svg>` }} />
+                            if (el.type === "icon") inner = <div onPointerDown={onpd} onContextMenu={onctx} style={{ ...common, width: el.fontSize * scale, height: el.fontSize * scale, color: el.color }}><IconSvg name={el.icon} size="100%" /></div>
                             else if (el.type === "rect") inner = <div onPointerDown={onpd} onContextMenu={onctx} style={{ ...common, width: el.w * scale, height: (el.h || 80) * scale, background: el.fill || "transparent", border: `${Math.max(1, scale)}px solid ${el.color}`, borderRadius: 4 * scale }} />
                             else if (el.type === "line") inner = <div onPointerDown={onpd} onContextMenu={onctx} style={{ ...common, width: el.w * scale, height: Math.max(1, (el.h || 2) * scale), background: el.color }} />
                             else if (el.type === "image") inner = <img onPointerDown={onpd} onContextMenu={onctx} src={el.src} alt="" style={{ ...common, width: el.w * scale, height: (el.h || 80) * scale, objectFit: "contain" }} />

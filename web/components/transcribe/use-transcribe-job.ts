@@ -2,6 +2,7 @@
 
 import { useEffect, useReducer, useState, type Dispatch } from "react"
 
+import { useLatest } from "@/components/transcribe/transcribe-hooks"
 import {
     friendlyError,
     readStorageJson,
@@ -9,6 +10,7 @@ import {
     writeStorage,
     type FriendlyError,
 } from "@/components/transcribe/transcribe-utils"
+import { normalizeCompleteManifest } from "@/lib/complete-manifest"
 import { resolveMessage, type Message } from "@/lib/i18n"
 import {
     cancelJob,
@@ -23,6 +25,8 @@ import {
     type TranscribeSegment,
     type TranscribeStatus,
 } from "@/lib/transcribe-api"
+import { livePhase } from "@/lib/transcribe-phase"
+import { afterCreate, cancelAction } from "@/lib/upload-cancel"
 
 export type JobPhase = "idle" | "uploading" | TranscribeStatus
 export type JobMode = "standard" | "complete"
@@ -31,6 +35,7 @@ export interface StartInfo {
     sourceName: string
     mode: JobMode
     uploading: boolean
+    sourceBytes: number | null
 }
 
 interface StoredJob {
@@ -38,6 +43,14 @@ interface StoredJob {
     startedAt: number
     sourceName: string
     mode: JobMode
+    sourceBytes: number | null
+}
+
+interface PendingUpload {
+    abort: AbortController
+    sent: boolean
+    cancelRequested: boolean
+    epoch: number
 }
 
 interface EtaAnchor {
@@ -49,6 +62,7 @@ export interface JobState {
     phase: JobPhase
     jobId: string | null
     sourceName: string
+    sourceBytes: number | null
     mode: JobMode
     startedAt: number | null
     finishedAt: number | null
@@ -98,10 +112,13 @@ const DEDUPED: Message = (t) => t.job.deduped
 const CANCELED: Message = (t) => t.job.canceled
 const UPLOAD_CANCELED: Message = (t) => t.job.uploadCanceled
 
+const jobCreatedListeners = new Set<() => void>()
+
 const INITIAL: JobState = {
     phase: "idle",
     jobId: null,
     sourceName: "",
+    sourceBytes: null,
     mode: "standard",
     startedAt: null,
     finishedAt: null,
@@ -158,11 +175,6 @@ function toSegment(raw: Record<string, unknown>, fallbackId: number): Transcribe
     }
 }
 
-function livePhase(phase: JobPhase, stage: string | null): JobPhase {
-    if (isTerminal(phase)) return phase
-    return stage === "queued" ? "queued" : "running"
-}
-
 function anchorFor(state: JobState, stage: string, pct: number, now: number) {
     if (stage !== "transcribe") return null
     if (!state.eta || pct < state.eta.pct) return { at: now, pct }
@@ -192,7 +204,7 @@ function applySnapshot(state: JobState, job: TranscribeJob, now: number, live: b
         text: job.status === "done" && typeof job.text === "string" ? job.text : state.text,
         files: asFiles(job.files) ?? state.files,
         degraded: asStringArray(job.degraded) ?? state.degraded,
-        complete: job.complete ?? state.complete,
+        complete: normalizeCompleteManifest(job.complete) ?? state.complete,
         error: job.status === "error" ? friendlyError(job.error, JOB_FAILED) : state.error,
         notice: job.status === "canceled" ? state.notice ?? CANCELED : state.notice,
         finishedAt: isTerminal(job.status) ? state.finishedAt ?? (live ? now : null) : null,
@@ -261,6 +273,7 @@ function reducer(state: JobState, action: Action): JobState {
                 phase: action.info.uploading ? "uploading" : "queued",
                 stage,
                 sourceName: action.info.sourceName,
+                sourceBytes: action.info.sourceBytes,
                 mode: action.info.mode,
                 startedAt: action.startedAt,
             }
@@ -283,6 +296,7 @@ function reducer(state: JobState, action: Action): JobState {
                     ...INITIAL,
                     jobId: action.job.job_id,
                     sourceName: action.stored.sourceName,
+                    sourceBytes: action.stored.sourceBytes,
                     mode: action.stored.mode,
                     startedAt: action.stored.startedAt,
                 },
@@ -325,6 +339,10 @@ function parseStoredJob(raw: unknown): StoredJob | null {
         startedAt: typeof value.startedAt === "number" ? value.startedAt : Date.now(),
         sourceName: typeof value.sourceName === "string" ? value.sourceName : "",
         mode: value.mode === "complete" ? "complete" : "standard",
+        sourceBytes:
+            typeof value.sourceBytes === "number" && Number.isFinite(value.sourceBytes) && value.sourceBytes > 0
+                ? value.sourceBytes
+                : null,
     }
 }
 
@@ -333,7 +351,7 @@ function createController(dispatch: Dispatch<Action>) {
     let jobId: string | null = null
     let stream: { jobId: string; source: EventSource } | null = null
     let poll: { jobId: string; timer: number | null; failures: number } | null = null
-    let upload: AbortController | null = null
+    let upload: PendingUpload | null = null
 
     const forget = (id: string) => {
         const stored = parseStoredJob(readStorageJson(JOB_KEY))
@@ -456,50 +474,97 @@ function createController(dispatch: Dispatch<Action>) {
         connect(id, since)
     }
 
+    const releaseUpload = () => {
+        const current = upload
+        if (!current) return
+        if (cancelAction({ hasUpload: true, bodySent: current.sent, jobId: null }) === "abort") current.abort.abort()
+        else current.cancelRequested = true
+    }
+
+    const cancelCreated = async (id: string) => {
+        try {
+            const result = await cancelJob(id)
+            return result.ok || result.status === "canceled"
+        } catch {
+            return false
+        }
+    }
+
     const start = async (form: FormData, info: StartInfo) => {
         closeStream()
         stopPolling()
-        upload?.abort()
+        releaseUpload()
         jobId = null
         epoch += 1
-        const token = epoch
         const startedAt = Date.now()
         dispatch({ type: "begin", info, startedAt })
-        const controller = new AbortController()
-        upload = controller
+        const current: PendingUpload = { abort: new AbortController(), sent: false, cancelRequested: false, epoch }
+        upload = current
         let lastPercent = -1
         let result: StartTranscriptionResult
         try {
             result = await startTranscription(form, {
-                signal: controller.signal,
+                signal: current.abort.signal,
+                onUploadSent: () => {
+                    current.sent = true
+                },
                 onUploadProgress: info.uploading
                     ? (fraction) => {
                           const percent = Math.floor(fraction * 100)
-                          if (percent === lastPercent || upload !== controller) return
+                          if (percent === lastPercent || upload !== current) return
                           lastPercent = percent
                           dispatch({ type: "upload", fraction })
                       }
                     : undefined,
             })
         } catch (err) {
-            if (upload === controller) upload = null
-            if (token !== epoch) return
-            if (isAbortError(err)) dispatch({ type: "canceled", notice: UPLOAD_CANCELED, now: Date.now() })
-            else dispatch({ type: "fail", error: friendlyError(err, START_FAILED), now: Date.now() })
+            if (upload === current) upload = null
+            if (current.epoch !== epoch) return
+            if (isAbortError(err) || current.cancelRequested) {
+                dispatch({ type: "canceled", notice: UPLOAD_CANCELED, now: Date.now() })
+            } else {
+                dispatch({ type: "fail", error: friendlyError(err, START_FAILED), now: Date.now() })
+            }
             return
         }
-        if (upload === controller) upload = null
-        const stored: StoredJob = { jobId: result.job_id, startedAt, sourceName: info.sourceName, mode: info.mode }
+        if (upload === current) upload = null
+        const next = afterCreate({ deduped: Boolean(result.deduped), cancelRequested: current.cancelRequested })
+        if (next === "drop") {
+            if (current.epoch === epoch) dispatch({ type: "canceled", notice: UPLOAD_CANCELED, now: Date.now() })
+            return
+        }
+        if (next === "cancel-job" && (await cancelCreated(result.job_id))) {
+            if (current.epoch === epoch) dispatch({ type: "canceled", notice: CANCELED, now: Date.now() })
+            return
+        }
+        const stored: StoredJob = {
+            jobId: result.job_id,
+            startedAt,
+            sourceName: info.sourceName,
+            mode: info.mode,
+            sourceBytes: info.sourceBytes,
+        }
         writeStorage(JOB_KEY, JSON.stringify(stored))
-        if (token !== epoch) return
+        if (current.epoch !== epoch) {
+            jobCreatedListeners.forEach((listener) => listener())
+            return
+        }
         jobId = result.job_id
         dispatch({ type: "created", jobId: result.job_id, model: result.model ?? null, deduped: Boolean(result.deduped) })
+        if (current.cancelRequested) dispatch({ type: "canceling", value: false })
         await attach(result.job_id)
     }
 
     const cancel = async () => {
-        if (upload) {
-            upload.abort()
+        const pending = upload
+        const action = cancelAction({ hasUpload: Boolean(pending), bodySent: Boolean(pending?.sent), jobId })
+        if (pending && action === "abort") {
+            pending.abort.abort()
+            return
+        }
+        if (pending && action === "cancel-when-created") {
+            pending.cancelRequested = true
+            dispatch({ type: "canceling", value: true })
             return
         }
         const id = jobId
@@ -528,7 +593,7 @@ function createController(dispatch: Dispatch<Action>) {
         }
     }
 
-    const resume = async () => {
+    const resume = async (replaceIdle = false) => {
         const stored = parseStoredJob(readStorageJson(JOB_KEY))
         if (!stored) return
         const token = epoch
@@ -538,7 +603,8 @@ function createController(dispatch: Dispatch<Action>) {
         } catch {
             return
         }
-        if (token !== epoch || jobId || upload) return
+        if (token !== epoch || upload) return
+        if (jobId && (!replaceIdle || jobId === stored.jobId || stream || poll)) return
         if (!job || job.status === "error" || job.status === "canceled") {
             forget(stored.jobId)
             return
@@ -550,7 +616,7 @@ function createController(dispatch: Dispatch<Action>) {
 
     const clear = () => {
         epoch += 1
-        upload?.abort()
+        releaseUpload()
         upload = null
         closeStream()
         stopPolling()
@@ -559,13 +625,25 @@ function createController(dispatch: Dispatch<Action>) {
         dispatch({ type: "clear" })
     }
 
+    const onJobCreated = () => {
+        void resume(true)
+    }
+
+    const mount = (live: boolean) => {
+        jobCreatedListeners.add(onJobCreated)
+        if (upload) upload.epoch = epoch
+        if (jobId && live) void attach(jobId)
+        else if (!jobId) void resume()
+    }
+
     const dispose = () => {
         epoch += 1
+        jobCreatedListeners.delete(onJobCreated)
         closeStream()
         stopPolling()
     }
 
-    return { start, cancel, resume, clear, dispose }
+    return { start, cancel, clear, mount, dispose }
 }
 
 export function remainingSeconds(state: JobState, now: number): number | null {
@@ -584,12 +662,13 @@ export function hasProgress(state: JobState) {
 export function useTranscribeJob() {
     const [state, dispatch] = useReducer(reducer, INITIAL)
     const [controller] = useState(() => createController(dispatch))
+    const busy = state.phase === "uploading" || state.phase === "queued" || state.phase === "running"
+    const busyRef = useLatest(busy)
 
     useEffect(() => {
-        void controller.resume()
+        controller.mount(busyRef.current)
         return () => controller.dispose()
-    }, [controller])
+    }, [controller, busyRef])
 
-    const busy = state.phase === "uploading" || state.phase === "queued" || state.phase === "running"
     return { state, busy, start: controller.start, cancel: controller.cancel, clear: controller.clear }
 }

@@ -4,6 +4,7 @@ import { FileAudio, Globe, HardDrive, Upload, X } from "lucide-react"
 import { useRef } from "react"
 
 import { MEDIA_ACCEPT } from "@/components/transcribe/transcribe-utils"
+import { shouldOpenPicker } from "@/lib/dropzone-keys"
 import { useI18n } from "@/lib/i18n/provider"
 import { cn } from "@/lib/utils"
 
@@ -48,10 +49,9 @@ export function MediaDropzone({
             data-dragging={dragging}
             onClick={openPicker}
             onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault()
-                    openPicker()
-                }
+                if (!shouldOpenPicker(event.key, event.target === event.currentTarget)) return
+                event.preventDefault()
+                openPicker()
             }}
             className={cn(
                 "dropzone-shell group relative flex min-h-[210px] cursor-pointer flex-col items-center justify-center gap-4 rounded-xl px-6 py-10 text-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-foreground/30",

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react"
 import { EmptyState, Panel, cardEnter } from "@/components/dashboard/primitives"
 import { friendlyError } from "@/components/transcribe/transcribe-utils"
 import { Button } from "@/components/ui/button"
+import { normalizeCompleteManifest } from "@/lib/complete-manifest"
 import { useI18n, useMessage } from "@/lib/i18n/provider"
 import {
     completeFileUrl,
@@ -19,13 +20,14 @@ import {
 export function CompletePackagePanel({ jobId, initial }: { jobId: string; initial: CompleteManifest | null }) {
     const { lang, t, resolve } = useI18n()
     const [srcLang] = useState(lang)
-    const [manifest, setManifest] = useState<CompleteManifest | null>(initial)
+    const [manifest, setManifest] = useState<CompleteManifest | null>(() => normalizeCompleteManifest(initial))
     const [loading, setLoading] = useState(!initial)
     const [opening, setOpening] = useState(false)
     const [folderError, setFolderError] = useMessage()
 
     useEffect(() => {
-        if (initial) setManifest(initial)
+        const next = normalizeCompleteManifest(initial)
+        if (next) setManifest(next)
     }, [initial])
 
     useEffect(() => {

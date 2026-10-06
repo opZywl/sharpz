@@ -1,20 +1,22 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { FileText, Headphones, Loader2, X } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { AudioWaveform, FileText, Loader2, X } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type WaveSurfer from "wavesurfer.js"
 
 import { Metric, Panel, cardEnter } from "@/components/dashboard/primitives"
 import { CopyButton, JobFileButton, SaveTextButton } from "@/components/transcribe/transcribe-actions"
-import { useLatest, useStickToBottom } from "@/components/transcribe/transcribe-hooks"
+import { useStickToBottom } from "@/components/transcribe/transcribe-hooks"
 import { degradedLabels, formatClock } from "@/components/transcribe/transcribe-utils"
 import type { JobState } from "@/components/transcribe/use-transcribe-job"
 import { Button } from "@/components/ui/button"
 import { Segmented } from "@/components/ui/segmented"
+import { apiFetch } from "@/lib/dashboard-utils"
 import { useI18n } from "@/lib/i18n/provider"
 import { audioUrl, type TranscribeSegment } from "@/lib/transcribe-api"
 import { cn } from "@/lib/utils"
+import { mediaFailed, probedSize, waveformAllowed } from "@/lib/waveform"
 
 type ResultTab = "text" | "segments"
 
@@ -32,22 +34,27 @@ function SegmentsView({
     segments,
     busy,
     canListen,
+    sourceBytes,
 }: {
     jobId: string | null
     segments: TranscribeSegment[]
     busy: boolean
     canListen: boolean
+    sourceBytes: number | null
 }) {
     const { lang, t } = useI18n()
+    const [srcLang] = useState(lang)
+    const [mediaBytes, setMediaBytes] = useState<number | null>(sourceBytes)
     const [waveRequested, setWaveRequested] = useState(false)
     const [waveStatus, setWaveStatus] = useState<"loading" | "ready" | "failed">("loading")
+    const [playable, setPlayable] = useState(true)
     const [active, setActive] = useState<number | null>(null)
+    const audioRef = useRef<HTMLAudioElement | null>(null)
     const containerRef = useRef<HTMLDivElement | null>(null)
-    const surferRef = useRef<WaveSurfer | null>(null)
-    const pendingRef = useRef<number | null>(null)
-    const segmentsRef = useLatest(segments)
-    const langRef = useLatest(lang)
     const list = useStickToBottom<HTMLDivElement>(segments.length, jobId)
+    const source = canListen && jobId ? audioUrl(jobId, srcLang) : null
+    const waveOk = waveformAllowed(mediaBytes) && playable
+    const shownStatus = playable ? waveStatus : "failed"
 
     const speakers = useMemo(() => {
         const counts = new Map<string, number>()
@@ -57,20 +64,31 @@ function SegmentsView({
         return Array.from(counts.entries())
     }, [segments])
 
-    const playAt = useCallback(
-        (index: number) => {
-            const surfer = surferRef.current
-            const segment = segmentsRef.current[index]
-            if (!surfer || !segment) return
-            surfer.setTime(segment.start)
-            surfer.play().catch(() => undefined)
-        },
-        [segmentsRef],
-    )
+    useEffect(() => {
+        if (!source || mediaBytes !== null) return
+        const controller = new AbortController()
+        apiFetch(source, { headers: { Range: "bytes=0-0" }, signal: controller.signal })
+            .then((response) => {
+                const size = probedSize({
+                    status: response.status,
+                    contentRange: response.headers.get("Content-Range"),
+                    contentLength: response.headers.get("Content-Length"),
+                })
+                controller.abort()
+                if (size !== null) setMediaBytes(size)
+            })
+            .catch(() => undefined)
+        return () => controller.abort()
+    }, [source, mediaBytes])
 
     useEffect(() => {
         const container = containerRef.current
-        if (!waveRequested || !jobId || !container) return
+        const media = audioRef.current
+        if (!waveRequested || !container || !media) return
+        if (mediaFailed(media)) {
+            setPlayable(false)
+            return
+        }
         let disposed = false
         let instance: WaveSurfer | null = null
         setWaveStatus("loading")
@@ -83,6 +101,7 @@ function SegmentsView({
                 const faint = styles.getPropertyValue("--app-faint").trim() || "#8a8a93"
                 const created = WaveSurferClass.create({
                     container,
+                    media,
                     height: 72,
                     waveColor: faint,
                     progressColor: strong,
@@ -90,22 +109,10 @@ function SegmentsView({
                     barWidth: 2,
                     barGap: 1,
                     barRadius: 2,
-                    mediaControls: true,
-                    url: audioUrl(jobId, langRef.current),
                 })
                 instance = created
-                surferRef.current = created
                 created.on("ready", () => {
-                    if (disposed) return
-                    setWaveStatus("ready")
-                    const pending = pendingRef.current
-                    pendingRef.current = null
-                    if (pending !== null) playAt(pending)
-                })
-                created.on("timeupdate", (time) => {
-                    if (disposed) return
-                    const index = segmentsRef.current.findIndex((segment) => time >= segment.start && time <= segment.end)
-                    if (index !== -1) setActive(index)
+                    if (!disposed) setWaveStatus("ready")
                 })
                 created.on("error", () => {
                     if (!disposed) setWaveStatus("failed")
@@ -117,54 +124,76 @@ function SegmentsView({
 
         return () => {
             disposed = true
-            if (surferRef.current === instance) surferRef.current = null
             try {
                 instance?.destroy()
             } catch {
                 return
             }
         }
-    }, [waveRequested, jobId, playAt, segmentsRef, langRef])
+    }, [waveRequested])
+
+    function handleTime(time: number) {
+        const index = segments.findIndex((segment) => time >= segment.start && time <= segment.end)
+        if (index !== -1) setActive(index)
+    }
 
     function handleSegment(index: number) {
         setActive(index)
-        if (!canListen) return
-        if (surferRef.current && waveStatus === "ready") {
-            playAt(index)
-            return
-        }
-        pendingRef.current = index
-        setWaveRequested(true)
+        const audio = audioRef.current
+        const segment = segments[index]
+        if (!source || !audio || !segment) return
+        audio.currentTime = segment.start
+        audio.play().catch(() => undefined)
     }
 
     return (
         <div className="grid gap-3">
-            {canListen ? (
+            {source ? (
                 <div className="status-card grid gap-2 rounded-xl p-3">
+                    <audio
+                        ref={audioRef}
+                        controls
+                        preload="metadata"
+                        src={source}
+                        className="w-full"
+                        onTimeUpdate={(event) => handleTime(event.currentTarget.currentTime)}
+                        onError={() => setPlayable(false)}
+                    />
                     {waveRequested ? (
                         <>
                             <div className="flex items-center justify-between gap-2">
                                 <span className="field-label">{t.result.waveform}</span>
                                 <span className="app-faint text-xs">
-                                    {waveStatus === "failed"
+                                    {shownStatus === "failed"
                                         ? t.result.waveFailedShort
-                                        : waveStatus === "ready"
+                                        : shownStatus === "ready"
                                           ? t.result.waveReady
                                           : t.result.waveLoading}
                                 </span>
                             </div>
-                            <div ref={containerRef} className={cn("min-h-[72px] w-full", waveStatus === "failed" && "hidden")} />
-                            {waveStatus === "failed" ? (
-                                <p className="app-muted text-sm">{t.result.waveFailed}</p>
+                            <div ref={containerRef} className={cn("min-h-[72px] w-full", shownStatus === "failed" && "hidden")} />
+                            {shownStatus === "failed" ? (
+                                <p className="app-muted text-sm">{playable ? t.result.waveFailed : t.result.cannotPlay}</p>
                             ) : null}
                         </>
                     ) : (
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                            <span className="app-muted text-sm">{t.result.waveIdle}</span>
-                            <Button type="button" variant="outline" size="sm" onClick={() => setWaveRequested(true)}>
-                                <Headphones className="size-4" />
-                                {t.result.listen}
-                            </Button>
+                            <span className="app-muted text-sm">
+                                {playable ? (
+                                    <>
+                                        {t.result.playHint}{" "}
+                                        {waveOk ? t.result.waveIdle : mediaBytes !== null ? t.result.waveTooLarge : null}
+                                    </>
+                                ) : (
+                                    t.result.cannotPlay
+                                )}
+                            </span>
+                            {waveOk ? (
+                                <Button type="button" variant="outline" size="sm" onClick={() => setWaveRequested(true)}>
+                                    <AudioWaveform className="size-4" />
+                                    {t.result.listen}
+                                </Button>
+                            ) : null}
                         </div>
                     )}
                 </div>
@@ -312,6 +341,7 @@ export function TranscriptResult({
                             segments={job.segments}
                             busy={busy}
                             canListen={done && Boolean(job.jobId)}
+                            sourceBytes={job.sourceBytes}
                         />
                     </div>
                 </div>
