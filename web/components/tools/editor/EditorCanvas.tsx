@@ -6,6 +6,7 @@ import type { Dispatch, RefObject, SetStateAction } from "react"
 import { IconSvg } from "@/components/tools/editor/IconSvg"
 import type { EditorMenu } from "@/components/tools/editor/editor-doc"
 import type { EditorElement } from "@/lib/editor-api"
+import { safeImageSrc } from "@/lib/editor-html"
 import { useI18n } from "@/lib/i18n/provider"
 
 export function EditorCanvas({
@@ -87,7 +88,7 @@ export function EditorCanvas({
                     if (el.type === "icon") inner = <div onPointerDown={onpd} onContextMenu={onctx} style={{ ...common, width: el.fontSize * scale, height: el.fontSize * scale, color: el.color }}><IconSvg name={el.icon} size="100%" /></div>
                     else if (el.type === "rect") inner = <div onPointerDown={onpd} onContextMenu={onctx} style={{ ...common, width: el.w * scale, height: (el.h || 80) * scale, background: el.fill || "transparent", border: `${Math.max(1, scale)}px solid ${el.color}`, borderRadius: 4 * scale }} />
                     else if (el.type === "line") inner = <div onPointerDown={onpd} onContextMenu={onctx} style={{ ...common, width: el.w * scale, height: Math.max(1, (el.h || 2) * scale), background: el.color }} />
-                    else if (el.type === "image") inner = <img onPointerDown={onpd} onContextMenu={onctx} src={el.src} alt="" style={{ ...common, width: el.w * scale, height: (el.h || 80) * scale, objectFit: "contain" }} />
+                    else if (el.type === "image") inner = <img onPointerDown={onpd} onContextMenu={onctx} src={safeImageSrc(el.src) ?? undefined} alt="" style={{ ...common, width: el.w * scale, height: (el.h || 80) * scale, objectFit: "contain" }} />
                     else inner = (
                         <div onPointerDown={onpd} onContextMenu={onctx} onDoubleClick={(e) => { e.stopPropagation(); if (!el.locked) { snapshot(); setEditing(el.id); setSelected([el.id]) } }}
                             contentEditable={isEd} suppressContentEditableWarning onBlur={(e) => { patch(el.id, { text: e.currentTarget.textContent ?? "" }); setEditing(null) }}

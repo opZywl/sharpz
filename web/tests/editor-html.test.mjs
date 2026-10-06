@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 
-import { GOOGLE_FONTS, buildEditorHtml, safeColor, safePage } from "../lib/editor-html.ts"
+import { GOOGLE_FONTS, buildEditorHtml, safeColor, safeImageSrc, safePage } from "../lib/editor-html.ts"
 import { iconSvgInner } from "../lib/editor-icons.ts"
 
 const A4 = { w: 595.276, h: 841.89 }
@@ -268,4 +268,22 @@ test("the png window gets the same checked page size as the html", () => {
     const html = render([], { page: { w: 1e7, h: -5 } })
     assert.ok(html.includes("@page{size:14400pt 1pt;margin:0}"))
     assert.ok(html.includes(".page{position:relative;width:14400pt;height:1pt;"))
+})
+
+test("safeImageSrc keeps base64 image data and refuses everything else", () => {
+    assert.equal(safeImageSrc(PNG), PNG)
+    assert.equal(safeImageSrc("data:image/svg+xml;base64,PHN2Zy8+"), "data:image/svg+xml;base64,PHN2Zy8+")
+    for (const bad of [
+        "javascript:alert(1)",
+        "data:text/html;base64,PHNjcmlwdD4=",
+        "data:image/png,raw",
+        "https://example.com/a.png",
+        "file:///C:/x.png",
+        PNG + '" onerror="alert(1)',
+        "",
+        null,
+        42,
+    ]) {
+        assert.equal(safeImageSrc(bad), null, String(bad))
+    }
 })
