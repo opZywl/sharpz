@@ -3,9 +3,9 @@ from __future__ import annotations
 import gc
 import json
 import os
-import queue
 import sys
 import threading
+import time
 
 from src.i18n import t, use_lang
 from transcribe import engine
@@ -33,10 +33,45 @@ class ModelCache:
         gc.collect()
 
 
-def read_requests(inbox: queue.Queue) -> None:
-    for line in sys.stdin:
-        if line.strip():
-            inbox.put(line)
+class IdleExit:
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+        self._cond = threading.Condition()
+        self._busy = False
+        self._since = time.monotonic()
+
+    def start(self) -> None:
+        threading.Thread(target=self._watch, daemon=True).start()
+
+    def busy(self) -> None:
+        with self._cond:
+            self._busy = True
+
+    def idle(self) -> None:
+        with self._cond:
+            self._busy = False
+            self._since = time.monotonic()
+            self._cond.notify_all()
+
+    def _watch(self) -> None:
+        with self._cond:
+            while True:
+                if self._busy:
+                    self._cond.wait()
+                    continue
+                remaining = self.seconds - (time.monotonic() - self._since)
+                if remaining <= 0:
+                    break
+                self._cond.wait(remaining)
+        finish()
+
+
+def finish() -> None:
+    for stream in (sys.stdout, sys.stderr, sys.__stdout__):
+        try:
+            stream.flush()
+        except (AttributeError, OSError, ValueError):
+            pass
     os._exit(0)
 
 
@@ -65,21 +100,16 @@ def handle(raw: str, cache: ModelCache) -> None:
 
 def main() -> None:
     engine.configure_output()
-    inbox: queue.Queue = queue.Queue()
-    threading.Thread(target=read_requests, args=(inbox,), daemon=True).start()
     cache = ModelCache()
-    while True:
-        try:
-            raw = inbox.get(timeout=IDLE_SECONDS)
-        except queue.Empty:
-            break
+    watchdog = IdleExit(IDLE_SECONDS)
+    watchdog.start()
+    for raw in sys.stdin:
+        if not raw.strip():
+            continue
+        watchdog.busy()
         handle(raw, cache)
-    for stream in (sys.stdout, sys.stderr, sys.__stdout__):
-        try:
-            stream.flush()
-        except (AttributeError, OSError, ValueError):
-            pass
-    os._exit(0)
+        watchdog.idle()
+    finish()
 
 
 if __name__ == "__main__":

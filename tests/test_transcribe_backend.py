@@ -1241,6 +1241,41 @@ class RealWorkerTests(BackendTestCase):
         self.assertEqual(proc.wait(timeout=15), 0)
         proc.stdout.close()
 
+    def test_worker_loads_native_libraries_while_stdin_stays_open(self) -> None:
+        stub = self.root / "stub" / "faster_whisper" / "__init__.py"
+        stub.write_text("import numpy\n" + STUB_FASTER_WHISPER, encoding="utf-8")
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "transcribe.worker"],
+            cwd=str(REPO_ROOT), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, encoding="utf-8",
+        )
+        self.addCleanup(proc.stdout.close)
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+        request = {"type": "job", "job_id": "native", "args": {
+            "input": str(self.make_input()), "out_dir": str(self.root / "native"), "model": "base", "language": "pt",
+            "formats": "txt",
+        }}
+        proc.stdin.write(json.dumps(request) + "\n")
+        proc.stdin.flush()
+        events = []
+
+        def read_events() -> None:
+            for line in proc.stdout:
+                events.append(json.loads(line))
+                if events[-1]["type"] in ("done", "error"):
+                    return
+
+        reader = threading.Thread(target=read_events, daemon=True)
+        reader.start()
+        reader.join(60)
+        hung = reader.is_alive()
+        if hung:
+            proc.kill()
+        self.assertFalse(hung, "the worker hung loading native code while its stdin was still open")
+        self.assertEqual(events[-1]["type"], "done")
+        proc.stdin.close()
+        self.assertEqual(proc.wait(timeout=15), 0)
+
     def test_engine_cli_resolves_auto_and_survives_missing_whisperx(self) -> None:
         code, events, stderr = self.run_cli("--diarize")
         self.assertEqual(code, 0, stderr)
