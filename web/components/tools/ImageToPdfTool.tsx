@@ -1,37 +1,29 @@
 "use client"
 
 import { motion } from "framer-motion"
-import {
-    CheckCircle2,
-    Download,
-    FileText,
-    FolderOpen,
-    Loader2,
-    Play,
-    Settings2,
-    Terminal,
-} from "lucide-react"
+import { FileText } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
-import { Button } from "@/components/ui/button"
+import { cardEnter } from "@/components/dashboard/primitives"
+import { ImgPdfOptionsPanel } from "@/components/tools/imgpdf/ImgPdfOptionsPanel"
+import { ImgPdfProgressPanel } from "@/components/tools/imgpdf/ImgPdfProgressPanel"
+import { ImgPdfSourcePanel } from "@/components/tools/imgpdf/ImgPdfSourcePanel"
 import {
-    CheckboxRow,
-    EmptyState,
-    FileField,
-    Metric,
-    Panel,
-    SelectField,
-    TextField,
-    cardEnter,
-} from "@/components/dashboard/primitives"
-import { errorText, pick } from "@/lib/i18n"
+    DEFAULT_VISION_BASE_URL,
+    DEFAULT_VISION_MODEL,
+    OUTPUT_DIR_KEY,
+    VISION_API_KEY_KEY,
+    VISION_BASE_URL_KEY,
+    VISION_MODEL_KEY,
+    type OcrEngine,
+    type PageMode,
+    type Status,
+} from "@/components/tools/imgpdf/imgpdf-settings"
+import { errorText } from "@/lib/i18n"
 import { useI18n, useMessage } from "@/lib/i18n/provider"
-import { cn } from "@/lib/utils"
 import {
     getImgPdfCapabilities,
     getImgPdfJob,
-    imgPdfDownloadUrl,
-    imgPdfPreviewUrl,
     openImgPdfFolder,
     openImgPdfStream,
     startImageToPdf,
@@ -40,28 +32,8 @@ import {
     type ImgPdfManifest,
 } from "@/lib/imgpdf-api"
 
-type Status = "idle" | "running" | "done" | "error"
-type PageMode = "auto" | "a4"
-type OcrEngine = "auto" | "vision" | "tesseract"
-
-const VISION_BASE_URL_KEY = "cleanup-image.vision-base-url"
-const VISION_MODEL_KEY = "cleanup-image.vision-model"
-const VISION_API_KEY_KEY = "cleanup-image.vision-api-key"
-const OUTPUT_DIR_KEY = "cleanup-image.imgpdf-output-dir"
-const DEFAULT_VISION_BASE_URL = "http://localhost:11434/v1"
-const DEFAULT_VISION_MODEL = "llama3.2-vision"
-
-const PAGE_MODES: PageMode[] = ["auto", "a4"]
-const OCR_ENGINES: OcrEngine[] = ["auto", "vision", "tesseract"]
-
-const LOG_TONE: Record<string, string> = {
-    ok: "text-emerald-600 dark:text-emerald-300",
-    warn: "text-amber-600 dark:text-amber-300",
-    info: "app-faint",
-}
-
 export function ImageToPdfTool() {
-    const { lang, t, fmt, resolve } = useI18n()
+    const { lang, resolve } = useI18n()
     const [srcLang] = useState(lang)
     const [file, setFile] = useState<File | null>(null)
     const [localPath, setLocalPath] = useState("")
@@ -274,176 +246,55 @@ export function ImageToPdfTool() {
             ) : null}
 
             <motion.div {...cardEnter} className="grid gap-4 xl:grid-cols-[minmax(290px,0.72fr)_minmax(0,1.28fr)]">
-                <Panel title={t.imgpdf.imageTitle} subtitle={t.imgpdf.imageSubtitle} icon={FileText}>
-                    <div className="grid gap-4">
-                        <FileField
-                            file={file}
-                            onChange={setFile}
-                            accept="image/*"
-                            label={t.imgpdf.chooseImage}
-                            helper="png, jpg, webp, bmp, tiff"
-                        />
-                        <TextField
-                            label={t.imgpdf.localPath}
-                            value={localPath}
-                            onChange={setLocalPath}
-                            placeholder={t.placeholders.imageFile}
-                        />
-                        {previewUrl ? (
-                            <div className="preview-card overflow-hidden rounded-xl">
-                                <img src={previewUrl} alt={t.imgpdf.sourceAlt} className="max-h-[320px] w-full object-contain p-3" />
-                            </div>
-                        ) : null}
-                    </div>
-                </Panel>
+                <ImgPdfSourcePanel
+                    file={file}
+                    setFile={setFile}
+                    localPath={localPath}
+                    setLocalPath={setLocalPath}
+                    previewUrl={previewUrl}
+                />
 
-                <Panel title={t.imgpdf.optionsTitle} subtitle={t.imgpdf.optionsSubtitle} icon={Settings2}>
-                    <div className="grid gap-4">
-                        <div className="grid gap-3 md:grid-cols-2">
-                            <SelectField
-                                label={t.imgpdf.page}
-                                value={pageMode}
-                                options={PAGE_MODES.map((value) => ({ value, label: t.imgpdf.pages[value] }))}
-                                onChange={setPageMode}
-                            />
-                            <SelectField
-                                label={t.imgpdf.engine}
-                                value={ocrEngine}
-                                options={OCR_ENGINES.map((value) => ({ value, label: t.imgpdf.engines[value] }))}
-                                onChange={setOcrEngine}
-                            />
-                        </div>
-
-                        <CheckboxRow
-                            checked={verify}
-                            onChange={setVerify}
-                            label={t.imgpdf.verify}
-                            helper={t.imgpdf.verifyHelper}
-                        />
-
-                        {ocrEngine !== "tesseract" ? (
-                            <div className="grid gap-3 rounded-xl border border-foreground/10 p-3">
-                                <span className="field-label">{t.imgpdf.visionTitle}</span>
-                                <div className="grid gap-3 md:grid-cols-2">
-                                    <TextField label={t.imgpdf.baseUrl} value={visionBaseUrl} onChange={setVisionBaseUrl} placeholder={DEFAULT_VISION_BASE_URL} />
-                                    <TextField label={t.fields.model} value={visionModel} onChange={setVisionModel} placeholder={DEFAULT_VISION_MODEL} />
-                                </div>
-                                <TextField label={t.fields.apiKeyOptional} value={visionApiKey} onChange={setVisionApiKey} placeholder="sk-..." type="password" />
-                                <span className="app-faint text-xs">
-                                    {ocrEngine === "auto" ? t.imgpdf.autoHint : t.imgpdf.visionHint}
-                                    {tesseractOk === false ? t.imgpdf.tesseractHint : ""}
-                                </span>
-                            </div>
-                        ) : null}
-
-                        <div className="grid gap-3 md:grid-cols-2">
-                            <TextField label={t.imgpdf.pdfName} value={outputName} onChange={setOutputName} placeholder={t.imgpdf.pdfNamePlaceholder} />
-                            <TextField label={t.fields.outputFolderOptional} value={outputDir} onChange={setOutputDir} placeholder={t.placeholders.folder} />
-                        </div>
-                        <CheckboxRow checked={openFolderOpt} onChange={setOpenFolderOpt} label={t.imgpdf.openWhenDone} />
-
-                        <Button onClick={handleConvert} disabled={running} size="lg" className="w-full">
-                            {running ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-                            {t.imgpdf.run}
-                        </Button>
-                    </div>
-                </Panel>
+                <ImgPdfOptionsPanel
+                    pageMode={pageMode}
+                    setPageMode={setPageMode}
+                    ocrEngine={ocrEngine}
+                    setOcrEngine={setOcrEngine}
+                    verify={verify}
+                    setVerify={setVerify}
+                    visionBaseUrl={visionBaseUrl}
+                    setVisionBaseUrl={setVisionBaseUrl}
+                    visionModel={visionModel}
+                    setVisionModel={setVisionModel}
+                    visionApiKey={visionApiKey}
+                    setVisionApiKey={setVisionApiKey}
+                    outputName={outputName}
+                    setOutputName={setOutputName}
+                    outputDir={outputDir}
+                    setOutputDir={setOutputDir}
+                    openFolderOpt={openFolderOpt}
+                    setOpenFolderOpt={setOpenFolderOpt}
+                    tesseractOk={tesseractOk}
+                    running={running}
+                    handleConvert={handleConvert}
+                />
             </motion.div>
 
             <motion.div {...cardEnter}>
-                <Panel title={t.imgpdf.progressTitle} subtitle={t.imgpdf.progressSubtitle} icon={Terminal}>
-                    {status === "idle" ? (
-                        <EmptyState text={t.imgpdf.empty} />
-                    ) : (
-                        <div className="space-y-4">
-                            <div className="grid gap-2">
-                                <div className="flex items-center justify-between text-xs">
-                                    <span className="app-faint font-semibold uppercase tracking-[0.16em]">
-                                        {pick(t.imgpdf.stages, stage) || stage || t.imgpdf.processing}
-                                    </span>
-                                    <span className="font-jakarta font-extrabold">{fmt.percent(pct)}</span>
-                                </div>
-                                <div className="h-2 w-full overflow-hidden rounded-full bg-foreground/10">
-                                    <div
-                                        className="h-full rounded-full bg-foreground/70 transition-all"
-                                        style={{ width: `${Math.min(100, Math.max(0, pct * 100))}%` }}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="preview-card max-h-[360px] overflow-auto p-3 font-mono text-xs leading-5">
-                                {logs.length ? (
-                                    <div className="grid gap-0.5">
-                                        {logs.map((entry, index) => (
-                                            <div key={index} className={cn("flex gap-2", LOG_TONE[entry.level] || "app-faint")}>
-                                                <span className="select-none opacity-50">{entry.level === "ok" ? ">>" : "·"}</span>
-                                                <span className="whitespace-pre-wrap break-words">{entry.message}</span>
-                                            </div>
-                                        ))}
-                                        <div ref={logEndRef} />
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center justify-center gap-2 px-4 py-10 text-center">
-                                        <Loader2 className="size-4 animate-spin" />
-                                        <span className="app-muted">{t.imgpdf.starting}</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {degraded.length ? (
-                                <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
-                                    {t.imgpdf.degraded(degraded.map((item) => pick(t.imgpdf.degradedNames, item) ?? item).join(", "))}
-                                </div>
-                            ) : null}
-
-                            {status === "done" && manifest ? (
-                                <>
-                                    <div className="grid gap-3 md:grid-cols-4">
-                                        <Metric label={t.imgpdf.engineMetric} value={pick(t.imgpdf.engineNames, manifest.engine) ?? manifest.engine} />
-                                        <Metric label={t.imgpdf.blocks} value={fmt.number(manifest.blocks)} />
-                                        <Metric label={t.imgpdf.chars} value={fmt.number(report ? report.chars : 0)} helper={report ? t.imgpdf.hyphens(report.hyphens) : undefined} />
-                                        <Metric
-                                            label={t.imgpdf.layer}
-                                            value={report?.clean ? t.imgpdf.clean : t.imgpdf.glitchy}
-                                            helper={report ? t.imgpdf.pageSize(report.page_pt?.map((v) => fmt.number(v)).join(" x ") ?? "") : undefined}
-                                        />
-                                    </div>
-
-                                    {report && report.glitch_total === 0 ? (
-                                        <div className="flex items-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-200">
-                                            <CheckCircle2 className="size-4 shrink-0" />
-                                            {t.imgpdf.layerChecked}
-                                        </div>
-                                    ) : null}
-
-                                    {jobId ? (
-                                        <div className="preview-card overflow-hidden rounded-xl">
-                                            <img src={imgPdfPreviewUrl(jobId, srcLang)} alt={t.imgpdf.pdfAlt} className="max-h-[520px] w-full object-contain p-3" />
-                                        </div>
-                                    ) : null}
-
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        {jobId ? (
-                                            <Button asChild>
-                                                <a href={imgPdfDownloadUrl(jobId, lang)} download={manifest.pdf_name}>
-                                                    <Download className="size-4" />
-                                                    {t.imgpdf.downloadPdf}
-                                                </a>
-                                            </Button>
-                                        ) : null}
-                                        <Button type="button" variant="outline" onClick={handleOpenFolder} disabled={openingFolder}>
-                                            {openingFolder ? <Loader2 className="size-4 animate-spin" /> : <FolderOpen className="size-4" />}
-                                            {t.common.openFolder}
-                                        </Button>
-                                        {elapsed != null ? (
-                                            <span className="app-faint text-xs">{fmt.seconds(elapsed, 1)}</span>
-                                        ) : null}
-                                    </div>
-                                </>
-                            ) : null}
-                        </div>
-                    )}
-                </Panel>
+                <ImgPdfProgressPanel
+                    status={status}
+                    stage={stage}
+                    pct={pct}
+                    logs={logs}
+                    logEndRef={logEndRef}
+                    degraded={degraded}
+                    manifest={manifest}
+                    report={report}
+                    jobId={jobId}
+                    srcLang={srcLang}
+                    openingFolder={openingFolder}
+                    handleOpenFolder={handleOpenFolder}
+                    elapsed={elapsed}
+                />
             </motion.div>
         </div>
     )
