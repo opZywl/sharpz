@@ -25,27 +25,30 @@ export function DashboardHeader({
     openModule: (module: ModuleId) => void
 }) {
     const { t } = useI18n()
+    const current = activeToolMeta ? "tool" : activeModuleMeta ? "module" : "home"
     return (
-        <motion.header {...cardEnter}>
+        <motion.header {...cardEnter} className="dashboard-header">
             <DashboardShell innerClassName="p-4 sm:p-5">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                    <div className="flex min-w-0 items-center gap-2 text-sm">
+                    <div className="header-crumbs flex min-w-0 items-center gap-2 text-sm">
                         <button
                             type="button"
                             onClick={goHome}
-                            className="app-muted inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.16em] transition-colors hover:text-foreground"
+                            aria-current={current === "home" ? "page" : undefined}
+                            className="header-crumb app-muted inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.16em] transition-colors hover:text-foreground"
                         >
-                            <Home className="size-3.5" />
+                            <Home className="header-home-icon size-3.5" />
                             {t.nav.home}
                         </button>
                         {activeModuleMeta ? (
                             <>
-                                <ChevronRight className="app-faint size-3.5 shrink-0" />
+                                <ChevronRight className="header-crumb-sep app-faint size-3.5 shrink-0" />
                                 <button
                                     type="button"
                                     onClick={() => openModule(activeModuleMeta.id)}
+                                    aria-current={current === "module" ? "page" : undefined}
                                     className={cn(
-                                        "inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.16em] transition-colors",
+                                        "header-crumb inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.16em] transition-colors",
                                         activeToolMeta ? "app-muted hover:text-foreground" : "text-foreground",
                                     )}
                                 >
@@ -55,8 +58,11 @@ export function DashboardHeader({
                         ) : null}
                         {activeToolMeta ? (
                             <>
-                                <ChevronRight className="app-faint size-3.5 shrink-0" />
-                                <span className="inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.16em] text-foreground">
+                                <ChevronRight className="header-crumb-sep app-faint size-3.5 shrink-0" />
+                                <span
+                                    aria-current="page"
+                                    className="header-crumb inline-flex items-center gap-1.5 font-semibold uppercase tracking-[0.16em] text-foreground"
+                                >
                                     {t.tools[activeToolMeta.id].title}
                                 </span>
                             </>
@@ -65,7 +71,7 @@ export function DashboardHeader({
 
                     <div className="flex flex-wrap items-center gap-2">
                         <span
-                            className="status-pill px-3 py-2 text-xs font-semibold"
+                            className="header-api-pill status-pill px-3 py-2 text-xs font-semibold"
                             data-tone={apiStatus === "online" ? "good" : apiStatus === "offline" ? "bad" : undefined}
                         >
                             API {t.status[apiStatus]}

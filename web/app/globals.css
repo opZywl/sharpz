@@ -438,6 +438,158 @@
     box-shadow: 0 0 7px color-mix(in srgb, var(--app-bad) 75%, transparent);
 }
 
+.ruby .dashboard-header .dashboard-shell {
+    border-color: transparent;
+    background: none;
+}
+
+.ruby .dashboard-header .dashboard-inner {
+    isolation: isolate;
+    border-color: transparent;
+    background: none;
+}
+
+.ruby .dashboard-header .dashboard-inner::before,
+.ruby .dashboard-header .dashboard-inner::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.ruby .dashboard-header .dashboard-inner::before {
+    inset: -4px;
+    clip-path: polygon(10.5px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10.5px), calc(100% - 10.5px) 100%, 13.5px 100%, 0 calc(100% - 13.5px), 0 10.5px);
+    background:
+        radial-gradient(48px 44px at 0 0, rgba(255, 45, 74, 0.08), rgba(255, 45, 74, 0)),
+        radial-gradient(230px 30px at 50% 0, rgba(255, 45, 74, 0.045), rgba(255, 45, 74, 0)),
+        linear-gradient(90deg, #08070a, #08080a 10%, #0a090b 25%, #0c0a0c 35%, #0c0a0c 75%, #0a090b 82%, #080708 95%);
+}
+
+.ruby .dashboard-header .dashboard-inner::after {
+    inset: -12px;
+    border: solid transparent;
+    border-width: 40px 24px 40px 64px;
+    border-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1082' height='100' viewBox='0 0 1082 100'%3E%3Cdefs%3E%3ClinearGradient id='m' gradientUnits='userSpaceOnUse' x1='8' y1='0' x2='1074' y2='0'%3E%3Cstop offset='0' stop-color='%23ff2d4a' stop-opacity='0.32'/%3E%3Cstop offset='0.04' stop-color='%23ff2d4a' stop-opacity='0.31'/%3E%3Cstop offset='0.1' stop-color='%23ff2d4a' stop-opacity='0.3'/%3E%3Cstop offset='0.15' stop-color='%23ff2d4a' stop-opacity='0.23'/%3E%3Cstop offset='0.2' stop-color='%23ff2d4a' stop-opacity='0.22'/%3E%3Cstop offset='0.3' stop-color='%23ff2d4a' stop-opacity='0.22'/%3E%3Cstop offset='0.38' stop-color='%23ff2d4a' stop-opacity='0.24'/%3E%3Cstop offset='0.44' stop-color='%23ff2d4a' stop-opacity='0.31'/%3E%3Cstop offset='0.47' stop-color='%23ff2d4a' stop-opacity='0.34'/%3E%3Cstop offset='0.5' stop-color='%23ff2d4a' stop-opacity='0.37'/%3E%3Cstop offset='0.53' stop-color='%23ff2d4a' stop-opacity='0.35'/%3E%3Cstop offset='0.56' stop-color='%23ff2d4a' stop-opacity='0.3'/%3E%3Cstop offset='0.63' stop-color='%23ff2d4a' stop-opacity='0.3'/%3E%3Cstop offset='0.66' stop-color='%23ff2d4a' stop-opacity='0.26'/%3E%3Cstop offset='0.7' stop-color='%23ff2d4a' stop-opacity='0.25'/%3E%3Cstop offset='0.73' stop-color='%23ff2d4a' stop-opacity='0.2'/%3E%3Cstop offset='0.76' stop-color='%23ff2d4a' stop-opacity='0.14'/%3E%3Cstop offset='0.8' stop-color='%23ff2d4a' stop-opacity='0.17'/%3E%3Cstop offset='0.92' stop-color='%23ff2d4a' stop-opacity='0.2'/%3E%3Cstop offset='0.95' stop-color='%23e05068' stop-opacity='0.19'/%3E%3Cstop offset='0.975' stop-color='%23c88580' stop-opacity='0.14'/%3E%3Cstop offset='0.99' stop-color='%23c08a85' stop-opacity='0.12'/%3E%3Cstop offset='1' stop-color='%23c08a85' stop-opacity='0.07'/%3E%3C/linearGradient%3E%3ClinearGradient id='t' gradientUnits='userSpaceOnUse' x1='8' y1='0' x2='1074' y2='0'%3E%3Cstop offset='0.0091' stop-color='%23ff4f70' stop-opacity='1'/%3E%3Cstop offset='0.0107' stop-color='%23ff4566' stop-opacity='0.72'/%3E%3Cstop offset='0.0125' stop-color='%23ff3a5c' stop-opacity='0.56'/%3E%3Cstop offset='0.015' stop-color='%23ff3a5c' stop-opacity='0.4'/%3E%3Cstop offset='0.0178' stop-color='%23ff3a5c' stop-opacity='0.4'/%3E%3Cstop offset='0.0204' stop-color='%23ff3a5c' stop-opacity='0.36'/%3E%3Cstop offset='0.023' stop-color='%23ff3a5c' stop-opacity='0.3'/%3E%3Cstop offset='0.0257' stop-color='%23ff3a5c' stop-opacity='0.23'/%3E%3Cstop offset='0.028' stop-color='%23ff3a5c' stop-opacity='0.17'/%3E%3Cstop offset='0.031' stop-color='%23ff3a5c' stop-opacity='0.11'/%3E%3Cstop offset='0.036' stop-color='%23ff3a5c' stop-opacity='0.04'/%3E%3Cstop offset='0.041' stop-color='%23ff3a5c' stop-opacity='0'/%3E%3Cstop offset='0.15' stop-color='%23ff3060' stop-opacity='0'/%3E%3Cstop offset='0.2' stop-color='%23ff3060' stop-opacity='0.04'/%3E%3Cstop offset='0.26' stop-color='%23ff3060' stop-opacity='0.12'/%3E%3Cstop offset='0.3' stop-color='%23ff3060' stop-opacity='0.2'/%3E%3Cstop offset='0.333' stop-color='%23ff3060' stop-opacity='0.205'/%3E%3Cstop offset='0.36' stop-color='%23ff3060' stop-opacity='0.25'/%3E%3Cstop offset='0.386' stop-color='%23ff3060' stop-opacity='0.35'/%3E%3Cstop offset='0.413' stop-color='%23ff3060' stop-opacity='0.46'/%3E%3Cstop offset='0.44' stop-color='%23ff3060' stop-opacity='0.47'/%3E%3Cstop offset='0.47' stop-color='%23ff3060' stop-opacity='0.5'/%3E%3Cstop offset='0.493' stop-color='%23ff3866' stop-opacity='0.82'/%3E%3Cstop offset='0.52' stop-color='%23ff3060' stop-opacity='0.65'/%3E%3Cstop offset='0.545' stop-color='%23ff3060' stop-opacity='0.5'/%3E%3Cstop offset='0.572' stop-color='%23ff3060' stop-opacity='0.32'/%3E%3Cstop offset='0.6' stop-color='%23ff3060' stop-opacity='0.11'/%3E%3Cstop offset='0.63' stop-color='%23ff3060' stop-opacity='0.06'/%3E%3Cstop offset='0.66' stop-color='%23ff3060' stop-opacity='0'/%3E%3C/linearGradient%3E%3ClinearGradient id='u' gradientUnits='userSpaceOnUse' x1='8' y1='0' x2='1074' y2='0'%3E%3Cstop offset='0.044' stop-color='%23ff2d4a' stop-opacity='0.1'/%3E%3Cstop offset='0.068' stop-color='%23ff2d4a' stop-opacity='0.15'/%3E%3Cstop offset='0.095' stop-color='%23ff2d4a' stop-opacity='0.12'/%3E%3Cstop offset='0.121' stop-color='%23ff2d4a' stop-opacity='0.11'/%3E%3Cstop offset='0.148' stop-color='%23ff2d4a' stop-opacity='0.07'/%3E%3Cstop offset='0.174' stop-color='%23ff2d4a' stop-opacity='0.03'/%3E%3Cstop offset='0.2' stop-color='%23ff2d4a' stop-opacity='0'/%3E%3Cstop offset='0.465' stop-color='%23ff2d4a' stop-opacity='0'/%3E%3Cstop offset='0.492' stop-color='%23ff2d4a' stop-opacity='0.37'/%3E%3Cstop offset='0.515' stop-color='%23ff2d4a' stop-opacity='0.03'/%3E%3Cstop offset='0.53' stop-color='%23ff2d4a' stop-opacity='0'/%3E%3Cstop offset='0.62' stop-color='%23ff2d4a' stop-opacity='0.03'/%3E%3Cstop offset='0.651' stop-color='%23ff2d4a' stop-opacity='0.25'/%3E%3Cstop offset='0.678' stop-color='%23ff2d4a' stop-opacity='0.49'/%3E%3Cstop offset='0.704' stop-color='%23ff2d4a' stop-opacity='0.23'/%3E%3Cstop offset='0.731' stop-color='%23ff2d4a' stop-opacity='0.175'/%3E%3Cstop offset='0.757' stop-color='%23ff2d4a' stop-opacity='0.15'/%3E%3Cstop offset='0.784' stop-color='%23ff2d4a' stop-opacity='0.13'/%3E%3Cstop offset='0.81' stop-color='%23ff2d4a' stop-opacity='0.06'/%3E%3Cstop offset='0.85' stop-color='%23ff2d4a' stop-opacity='0.04'/%3E%3Cstop offset='0.9' stop-color='%23ff2d4a' stop-opacity='0.025'/%3E%3Cstop offset='0.943' stop-color='%23ff2d4a' stop-opacity='0.06'/%3E%3Cstop offset='0.97' stop-color='%23e05068' stop-opacity='0.09'/%3E%3Cstop offset='0.99' stop-color='%23e05068' stop-opacity='0'/%3E%3C/linearGradient%3E%3ClinearGradient id='l' gradientUnits='userSpaceOnUse' x1='0' y1='17.75' x2='0' y2='72'%3E%3Cstop offset='0' stop-color='%23ff4f70' stop-opacity='1'/%3E%3Cstop offset='0.078' stop-color='%23ff3a5c' stop-opacity='0.95'/%3E%3Cstop offset='0.152' stop-color='%23ff3a5c' stop-opacity='0.78'/%3E%3Cstop offset='0.263' stop-color='%23ff3a5c' stop-opacity='0.75'/%3E%3Cstop offset='0.29' stop-color='%23ff3a5c' stop-opacity='0.6'/%3E%3Cstop offset='0.307' stop-color='%23ff3a5c' stop-opacity='0.45'/%3E%3Cstop offset='0.329' stop-color='%23ff3a5c' stop-opacity='0.26'/%3E%3Cstop offset='0.373' stop-color='%23ff3a5c' stop-opacity='0.23'/%3E%3Cstop offset='0.742' stop-color='%23ff3a5c' stop-opacity='0.23'/%3E%3Cstop offset='0.834' stop-color='%23ff3a5c' stop-opacity='0.12'/%3E%3Cstop offset='0.926' stop-color='%23ff3a5c' stop-opacity='0'/%3E%3C/linearGradient%3E%3ClinearGradient id='c' gradientUnits='userSpaceOnUse' x1='8.75' y1='0' x2='51.5' y2='0'%3E%3Cstop offset='0' stop-color='%23ff3b57' stop-opacity='0'/%3E%3Cstop offset='0.076' stop-color='%23ff3b57' stop-opacity='0.08'/%3E%3Cstop offset='0.28' stop-color='%23ff3b57' stop-opacity='0.18'/%3E%3Cstop offset='0.73' stop-color='%23ff3b57' stop-opacity='0.25'/%3E%3Cstop offset='0.9' stop-color='%23ff3b57' stop-opacity='0.42'/%3E%3Cstop offset='1' stop-color='%23ff3b57' stop-opacity='0.3'/%3E%3C/linearGradient%3E%3ClinearGradient id='b' gradientUnits='userSpaceOnUse' x1='4' y1='0' x2='54' y2='0'%3E%3Cstop offset='0' stop-color='%23ff3b57' stop-opacity='0.34'/%3E%3Cstop offset='0.05' stop-color='%23ff3b57' stop-opacity='0.55'/%3E%3Cstop offset='0.22' stop-color='%23ff3b57' stop-opacity='0.62'/%3E%3Cstop offset='0.28' stop-color='%23ff3b57' stop-opacity='0.3'/%3E%3Cstop offset='0.4' stop-color='%23ff3b57' stop-opacity='0.21'/%3E%3Cstop offset='0.64' stop-color='%23ff3b57' stop-opacity='0.17'/%3E%3Cstop offset='0.92' stop-color='%23ff3b57' stop-opacity='0.15'/%3E%3Cstop offset='1' stop-color='%23ff3b57' stop-opacity='0.2'/%3E%3C/linearGradient%3E%3ClinearGradient id='i' gradientUnits='userSpaceOnUse' x1='0' y1='14' x2='0' y2='85'%3E%3Cstop offset='0' stop-color='%23ff2d4a' stop-opacity='0.14'/%3E%3Cstop offset='0.254' stop-color='%23ff2d4a' stop-opacity='0.13'/%3E%3Cstop offset='0.305' stop-color='%23ff2d4a' stop-opacity='0.32'/%3E%3Cstop offset='0.423' stop-color='%23ff2d4a' stop-opacity='0.32'/%3E%3Cstop offset='0.479' stop-color='%23ff2d4a' stop-opacity='0.24'/%3E%3Cstop offset='0.592' stop-color='%23ff2d4a' stop-opacity='0.22'/%3E%3Cstop offset='0.676' stop-color='%23ff2d4a' stop-opacity='0.12'/%3E%3Cstop offset='0.775' stop-color='%23ff2d4a' stop-opacity='0.12'/%3E%3Cstop offset='0.831' stop-color='%23ff2d4a' stop-opacity='0.28'/%3E%3Cstop offset='0.887' stop-color='%23ff2d4a' stop-opacity='0.32'/%3E%3Cstop offset='1' stop-color='%23ff2d4a' stop-opacity='0.28'/%3E%3C/linearGradient%3E%3ClinearGradient id='it' gradientUnits='userSpaceOnUse' x1='53.5' y1='0' x2='70' y2='0'%3E%3Cstop offset='0' stop-color='%23ff2d4a' stop-opacity='0.14'/%3E%3Cstop offset='1' stop-color='%23ff2d4a' stop-opacity='0'/%3E%3C/linearGradient%3E%3ClinearGradient id='ib' gradientUnits='userSpaceOnUse' x1='51.5' y1='0' x2='150' y2='0'%3E%3Cstop offset='0' stop-color='%23ff2d4a' stop-opacity='0.14'/%3E%3Cstop offset='0.58' stop-color='%23ff2d4a' stop-opacity='0.06'/%3E%3Cstop offset='1' stop-color='%23ff2d4a' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cg fill='none' stroke-linejoin='miter'%3E%3Cpath d='M55 91.25H1064.25L1073.25 82.25V17.25L1064.75 8.75H17.75L8.75 17.75V79.25L20.75 91.25H51.5' stroke='url(%23m)' stroke-width='1.5'/%3E%3Cpath d='M17.75 8.75H1064.75' stroke='url(%23t)' stroke-width='1.5'/%3E%3Cpath d='M55 91.25H1064.25' stroke='url(%23u)' stroke-width='1.5'/%3E%3Cpath d='M8.75 17.75V72' stroke='url(%23l)' stroke-width='1.5'/%3E%3Cpath d='M8.75 19V17.75L17.75 8.75H19' stroke='%23ff6d8a' stroke-width='2'/%3E%3Cpath d='M8.75 79.25L20.75 91.25H51.5' stroke='url(%23c)' stroke-width='1.5'/%3E%3Cpath d='M51.5 91.25V84.25' stroke='%23ff2d4a' stroke-opacity='0.3' stroke-width='1.5'/%3E%3Cpath d='M53.5 14.25H20.35L14.75 19.85V76.05L22.95 84.25H51.5' stroke='url(%23i)' stroke-width='1'/%3E%3Cpath d='M53.5 14.25H70' stroke='url(%23it)' stroke-width='1'/%3E%3Cpath d='M51.5 84.25H150' stroke='url(%23ib)' stroke-width='1'/%3E%3Cpath d='M53.5 5.75V3.25H14.95L4.15 14.05V35.2' stroke='url(%23b)' stroke-width='1.5'/%3E%3Cpath d='M4.15 35.2H8.75' stroke='%23ff3b57' stroke-opacity='0.3' stroke-width='1.5' stroke-linecap='square'/%3E%3C/g%3E%3C/svg%3E") 40 24 40 64 / 40px 24px 40px 64px / 0 stretch;
+    filter: drop-shadow(0 0 2px rgba(255, 45, 74, 0.5)) drop-shadow(0 0 8px rgba(255, 45, 74, 0.28));
+}
+
+.ruby .dashboard-header .dashboard-dot-layer,
+.ruby .dashboard-header .dashboard-inner > .pointer-events-none {
+    display: none;
+}
+
+@media (min-width: 1024px) {
+    .ruby .dashboard-header .header-api-pill {
+        display: none;
+    }
+}
+
+.ruby .dashboard-header .header-crumbs {
+    gap: 13px;
+    transform: translateY(-3px);
+}
+
+.ruby .dashboard-header .header-crumb {
+    gap: 17px;
+    color: #a8adc2;
+    font-family: var(--font-jakarta), sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+}
+
+.ruby .dashboard-header .header-crumb:hover {
+    color: #eceef4;
+}
+
+.ruby .dashboard-header .header-crumb[aria-current="page"] {
+    color: #ff0f55;
+    font-weight: 800;
+    text-shadow: 0 0 5px rgba(255, 15, 85, 0.25), 0 2px 14px rgba(255, 15, 85, 0.2), 0 -15px 26px rgba(255, 15, 85, 0.34);
+}
+
+.ruby .dashboard-header .header-home-icon {
+    width: 22px;
+    height: 22px;
+    margin: -1px 0 -1px 4.5px;
+    color: #e6e7ea;
+}
+
+.ruby .dashboard-header .header-crumb-sep {
+    width: 18px;
+    height: 18px;
+    color: #a3a7b3;
+}
+
+@media (max-width: 639.98px) {
+    .ruby .dashboard-header .header-crumbs {
+        gap: 8px;
+    }
+
+    .ruby .dashboard-header .header-crumb {
+        gap: 10px;
+        font-size: 13px;
+        letter-spacing: 0.04em;
+    }
+
+    .ruby .dashboard-header .header-home-icon {
+        width: 18px;
+        height: 18px;
+        margin: 0 0 0 2px;
+    }
+
+    .ruby .dashboard-header .header-crumb-sep {
+        width: 14px;
+        height: 14px;
+    }
+}
+
+.ruby .dashboard-header .lang-switch {
+    border-color: rgba(255, 255, 255, 0.07);
+    background: #0c0a0c;
+}
+
+.ruby .dashboard-header .lang-switch-option {
+    color: #8b8e9a;
+}
+
+.ruby .dashboard-header .lang-switch-option:hover {
+    color: #e4e5ea;
+}
+
+.ruby .dashboard-header .lang-switch-option[data-active="true"] {
+    background: rgba(255, 45, 74, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(255, 45, 74, 0.5), 0 0 10px rgba(255, 45, 74, 0.22);
+    color: #ff4a66;
+}
+
+.ruby .dashboard-header .theme-icon-button {
+    width: 39px;
+    height: 39px;
+    margin: -1.5px -4px -1.5px 0;
+    border-color: rgba(255, 255, 255, 0.05);
+    background: #080708;
+    color: #ececef;
+    box-shadow: none;
+}
+
+.ruby .dashboard-header .theme-icon-button:hover {
+    border-color: rgba(255, 45, 74, 0.4);
+    background: #130f12;
+}
+
+.ruby .dashboard-header .theme-icon-button:focus-visible {
+    border-color: rgba(255, 45, 74, 0.7);
+    box-shadow: 0 0 0 3px rgba(255, 45, 74, 0.35);
+}
+
+.ruby .dashboard-header .theme-icon-button svg {
+    width: 24px;
+    height: 24px;
+    stroke-width: 1.8;
+}
+
 .app-codeblock {
     border: 1px solid var(--app-border);
     background: color-mix(in srgb, var(--app-bg) 84%, black 8%);
