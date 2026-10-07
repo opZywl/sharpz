@@ -8,7 +8,9 @@ export const en: Messages = {
         names: { en: "English", ptBR: "Portuguese (Brazil)" },
     },
     theme: {
-        toggle: "Toggle theme",
+        toLight: "Switch to light theme",
+        toDark: "Switch to dark theme",
+        toRuby: "Switch to Ruby theme",
     },
     status: {
         checking: "checking",

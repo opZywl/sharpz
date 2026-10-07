@@ -39,7 +39,7 @@ Os scripts de cada opção ficam em [`scripts/`](../../scripts). Eles só abrem 
 
 ## Idioma
 
-O painel tem os botões **EN** e **PT-BR** no cabeçalho para trocar o idioma da interface.
+O painel tem os botões **EN** e **PT-BR** no cabeçalho para trocar o idioma da interface. O botão ao lado troca o tema: claro, escuro e Ruby (escuro com o painel de status vermelho).
 
 O menu e as mensagens do `sharpz.cmd` seguem o idioma de exibição do Windows: português quando o Windows está em português, inglês nos outros casos. Para forçar um deles, defina `SHARPZ_LANG` como `pt-BR` ou `en` antes de rodar (por exemplo `set SHARPZ_LANG=pt-BR`). As opções são as mesmas nos dois idiomas, e as ações pela linha de comando funcionam nos dois (`instalar`, `abrir`, `producao`, `testar` ou `install`, `open`, `prod`, `test`):
 

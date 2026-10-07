@@ -39,7 +39,7 @@ The scripts behind each option live in [`scripts/`](../../scripts). They only op
 
 ## Language
 
-The dashboard has **EN** and **PT-BR** buttons in the header to switch the interface language.
+The dashboard has **EN** and **PT-BR** buttons in the header to switch the interface language. The button next to them switches the theme: light, dark and Ruby (dark with a red status panel).
 
 The `sharpz.cmd` menu and messages follow the Windows display language: Portuguese when Windows is in Portuguese, English otherwise. To force one, set `SHARPZ_LANG` to `en` or `pt-BR` before running it (for example `set SHARPZ_LANG=en`). The options are the same in both languages, and the command-line actions work in both (`install`, `open`, `prod`, `test` or `instalar`, `abrir`, `producao`, `testar`):
 

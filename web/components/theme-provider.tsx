@@ -3,49 +3,49 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
 
+import { DEFAULT_THEME, THEME_CLASSES, nextTheme, parseStoredTheme, themeAttributes } from "@/lib/theme"
+import type { Theme } from "@/lib/theme"
+
 interface ThemeContextType {
-    theme: "light" | "dark"
+    theme: Theme
     toggleTheme: () => void
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-    theme: "dark",
+    theme: DEFAULT_THEME,
     toggleTheme: () => {},
 })
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-    const [theme, setTheme] = useState<"light" | "dark">("dark")
+    const [theme, setTheme] = useState<Theme>(DEFAULT_THEME)
+    const [ready, setReady] = useState(false)
 
     useEffect(() => {
         try {
-            const stored = localStorage.getItem("theme")
-            if (stored === "light" || stored === "dark") {
-                setTheme(stored)
-                return
-            }
-            setTheme("dark")
+            setTheme(parseStoredTheme(localStorage.getItem("theme")))
         } catch {
-            setTheme("dark")
+            setTheme(DEFAULT_THEME)
         }
+        setReady(true)
     }, [])
 
     useEffect(() => {
+        if (!ready) return
         const root = document.documentElement
-        root.classList.remove("light", "dark")
-        root.classList.add(theme)
-        root.setAttribute("data-theme", theme)
-        root.style.colorScheme = theme
+        const attributes = themeAttributes(theme)
+        root.classList.remove(...THEME_CLASSES)
+        root.classList.add(...attributes.classes)
+        root.setAttribute("data-theme", attributes.dataTheme)
+        root.style.colorScheme = attributes.colorScheme
         try {
             localStorage.setItem("theme", theme)
-        } catch {
-            /* ignore */
-        }
-    }, [theme])
+        } catch {}
+    }, [theme, ready])
 
     const value = useMemo(
         () => ({
             theme,
-            toggleTheme: () => setTheme((prev) => (prev === "dark" ? "light" : "dark")),
+            toggleTheme: () => setTheme((previous) => nextTheme(previous)),
         }),
         [theme],
     )

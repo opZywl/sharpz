@@ -6,7 +6,9 @@ export const ptBR = {
         names: { en: "Inglês", ptBR: "Português (Brasil)" },
     },
     theme: {
-        toggle: "Alternar tema",
+        toLight: "Mudar para o tema claro",
+        toDark: "Mudar para o tema escuro",
+        toRuby: "Mudar para o tema Ruby",
     },
     status: {
         checking: "verificando",
