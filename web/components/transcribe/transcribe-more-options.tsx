@@ -80,7 +80,7 @@ export function TranscribeMoreOptions({
 }) {
     const { t } = useI18n()
     return (
-        <div className="grid gap-4 border-t border-foreground/10 pt-4">
+        <div className="more-options grid gap-4 border-t border-foreground/10 pt-4">
             <button
                 type="button"
                 onClick={() => update({ moreOpen: !options.moreOpen })}

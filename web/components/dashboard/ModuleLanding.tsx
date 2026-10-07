@@ -21,17 +21,17 @@ export function ModuleLanding({
     const moduleText = t.modules[module.id]
     return (
         <motion.div {...cardEnter} className="space-y-4">
-            <DashboardShell innerClassName="p-5 sm:p-6">
+            <DashboardShell className="hud-panel" innerClassName="p-5 sm:p-6">
                 <div className="flex min-w-0 items-start gap-4">
-                    <span className="panel-icon size-12 shrink-0 rounded-2xl">
+                    <span className="hero-icon panel-icon size-12 shrink-0 rounded-2xl">
                         <ModuleIcon className={cn("size-6", module.accent)} />
                     </span>
                     <div className="min-w-0">
-                        <p className="app-faint text-[10px] font-bold uppercase tracking-[0.24em]">{t.moduleLanding.eyebrow}</p>
-                        <h2 className="mt-1 font-jakarta text-2xl font-extrabold uppercase leading-none tracking-tight sm:text-3xl">
+                        <p className="hero-eyebrow app-faint text-[10px] font-bold uppercase tracking-[0.24em]">{t.moduleLanding.eyebrow}</p>
+                        <h2 className="hero-title mt-1 font-jakarta text-2xl font-extrabold uppercase leading-none tracking-tight sm:text-3xl">
                             {moduleText.title}
                         </h2>
-                        <p className="app-muted mt-2 max-w-3xl text-sm leading-5">{moduleText.description}</p>
+                        <p className="hero-intro app-muted mt-2 max-w-3xl text-sm leading-5">{moduleText.description}</p>
                     </div>
                 </div>
             </DashboardShell>
@@ -42,20 +42,20 @@ export function ModuleLanding({
                         const ToolIcon = tool.icon
                         const toolText = t.tools[tool.id]
                         return (
-                            <div key={tool.id} className="preview-card flex flex-col gap-4 p-4">
+                            <div key={tool.id} className="nav-card nav-card-surface preview-card flex flex-col gap-4 p-4">
                                 <div className="flex items-start gap-3">
-                                    <span className="panel-icon size-10 shrink-0 rounded-xl">
+                                    <span className="nav-card-icon panel-icon size-10 shrink-0 rounded-xl">
                                         <ToolIcon className={cn("size-5", tool.accent)} />
                                     </span>
                                     <div className="min-w-0">
-                                        <div className="truncate font-jakarta text-sm font-extrabold uppercase leading-none tracking-tight">
+                                        <div className="nav-card-title truncate font-jakarta text-sm font-extrabold uppercase leading-none tracking-tight">
                                             {toolText.title}
                                         </div>
-                                        <div className="app-faint mt-1 truncate text-xs">{toolText.label}</div>
+                                        <div className="nav-card-label app-faint mt-1 truncate text-xs">{toolText.label}</div>
                                     </div>
                                 </div>
-                                <p className="app-muted text-sm leading-5">{toolText.description}</p>
-                                <Button onClick={() => onPickTool(tool.id)} variant="outline" className="mt-auto w-full">
+                                <p className="nav-card-desc app-muted text-sm leading-5">{toolText.description}</p>
+                                <Button onClick={() => onPickTool(tool.id)} variant="outline" className="nav-card-button mt-auto w-full">
                                     {t.common.open}
                                     <ArrowRight className="size-4" />
                                 </Button>

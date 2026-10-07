@@ -24,7 +24,7 @@ export function Segmented<T extends string>({
         <div
             role="tablist"
             className={cn(
-                "inline-flex w-fit gap-1 rounded-lg border bg-secondary/50 p-1",
+                "segmented inline-flex w-fit gap-1 rounded-lg border bg-secondary/50 p-1",
                 className,
             )}
         >
@@ -38,7 +38,7 @@ export function Segmented<T extends string>({
                         aria-selected={selected}
                         onClick={() => onChange(opt.value)}
                         className={cn(
-                            "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
+                            "segmented-option rounded-md px-3 py-1.5 text-xs font-medium transition-all",
                             selected
                                 ? "bg-background text-foreground shadow-sm"
                                 : "text-muted-foreground hover:text-foreground",

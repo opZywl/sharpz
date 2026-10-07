@@ -1,5 +1,7 @@
 "use client"
 
+import { Globe, Settings } from "lucide-react"
+
 import { SelectField } from "@/components/dashboard/primitives"
 import { ModelDownload } from "@/components/transcribe/model-download"
 import type { Mode, TranscribeOptions } from "@/components/transcribe/transcribe-options"
@@ -30,12 +32,16 @@ export function TranscribeModePicker({
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(200px,260px)_minmax(0,1fr)]">
             <SelectField
                 label={t.transcribe.language}
+                icon={Globe}
                 value={options.language}
                 options={languageOptions(t)}
                 onChange={(language) => update({ language })}
             />
             <div className="grid min-w-0 gap-2">
-                <span className="field-label">{t.transcribe.mode}</span>
+                <span className="field-label">
+                    <Settings className="field-label-icon" aria-hidden="true" />
+                    {t.transcribe.mode}
+                </span>
                 <div className="flex flex-wrap items-center gap-3">
                     <Segmented<Mode>
                         value={mode}

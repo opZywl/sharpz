@@ -12,12 +12,12 @@ export function ModuleGrid({ onPickModule }: { onPickModule: (module: ModuleId) 
     const { t } = useI18n()
     return (
         <motion.div {...cardEnter} className="space-y-4">
-            <DashboardShell innerClassName="p-5 sm:p-6">
-                <p className="app-faint text-[10px] font-bold uppercase tracking-[0.24em]">{t.nav.home}</p>
-                <h2 className="mt-1 font-jakarta text-2xl font-extrabold uppercase leading-none tracking-tight sm:text-3xl">
+            <DashboardShell className="hud-panel" innerClassName="p-5 sm:p-6">
+                <p className="hero-eyebrow app-faint text-[10px] font-bold uppercase tracking-[0.24em]">{t.nav.home}</p>
+                <h2 className="hero-title mt-1 font-jakarta text-2xl font-extrabold uppercase leading-none tracking-tight sm:text-3xl">
                     {t.home.title}
                 </h2>
-                <p className="app-muted mt-2 max-w-3xl text-sm leading-5">
+                <p className="hero-intro app-muted mt-2 max-w-3xl text-sm leading-5">
                     {t.home.intro}
                     <span className="font-semibold"> {t.modules.packages.title}</span>.
                 </p>
@@ -33,25 +33,25 @@ export function ModuleGrid({ onPickModule }: { onPickModule: (module: ModuleId) 
                             key={module.id}
                             type="button"
                             onClick={() => onPickModule(module.id)}
-                            className="text-left"
+                            className="nav-card text-left"
                         >
-                            <DashboardShell innerClassName="flex h-full flex-col gap-4 p-5">
+                            <DashboardShell className="nav-card-shell" innerClassName="nav-card-surface flex h-full flex-col gap-4 p-5">
                                 <div className="flex items-start gap-3">
-                                    <span className="panel-icon size-11 shrink-0 rounded-2xl">
+                                    <span className="nav-card-icon panel-icon size-11 shrink-0 rounded-2xl">
                                         <ModuleIcon className={cn("size-5", module.accent)} />
                                     </span>
                                     <div className="min-w-0">
-                                        <div className="truncate font-jakarta text-base font-extrabold uppercase leading-none tracking-tight">
+                                        <div className="nav-card-title truncate font-jakarta text-base font-extrabold uppercase leading-none tracking-tight">
                                             {moduleText.title}
                                         </div>
-                                        <div className="app-faint mt-1 truncate text-xs">{moduleText.label}</div>
+                                        <div className="nav-card-label app-faint mt-1 truncate text-xs">{moduleText.label}</div>
                                     </div>
                                 </div>
-                                <p className="app-muted text-sm leading-5">{moduleText.description}</p>
+                                <p className="nav-card-desc app-muted text-sm leading-5">{moduleText.description}</p>
                                 {showTools ? (
-                                    <div className="mt-auto flex flex-wrap gap-2">
+                                    <div className="nav-card-tags mt-auto flex flex-wrap gap-2">
                                         {module.tools.map((tool) => (
-                                            <span key={tool.id} className="status-pill px-2.5 py-1 text-xs font-semibold">
+                                            <span key={tool.id} className="nav-card-tag status-pill px-2.5 py-1 text-xs font-semibold">
                                                 {t.tools[tool.id].title}
                                             </span>
                                         ))}
@@ -59,7 +59,7 @@ export function ModuleGrid({ onPickModule }: { onPickModule: (module: ModuleId) 
                                 ) : null}
                                 <span
                                     className={cn(
-                                        "app-faint inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.16em]",
+                                        "nav-card-open app-faint inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.16em]",
                                         !showTools && "mt-auto",
                                     )}
                                 >

@@ -20,6 +20,16 @@ const SOURCE_ICONS = {
     url: Globe,
 }
 
+function accentLastWord(text: string) {
+    const index = text.lastIndexOf(" ")
+    return (
+        <>
+            {text.slice(0, index + 1)}
+            <span className="dropzone-accent">{text.slice(index + 1)}</span>
+        </>
+    )
+}
+
 export function MediaDropzone({
     dragging,
     source,
@@ -81,7 +91,7 @@ export function MediaDropzone({
                 </span>
             ) : (
                 <span className="grid gap-1.5">
-                    <span className="font-jakarta text-lg font-extrabold">{t.mediaDropzone.title}</span>
+                    <span className="dropzone-title font-jakarta text-lg font-extrabold">{accentLastWord(t.mediaDropzone.title)}</span>
                     <span className="app-muted text-sm">
                         {autoStart ? t.mediaDropzone.autoHint : t.mediaDropzone.manualHint}
                     </span>

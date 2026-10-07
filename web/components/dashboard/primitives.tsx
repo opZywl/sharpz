@@ -57,20 +57,20 @@ export function Panel({
     className?: string
 }) {
     return (
-        <DashboardShell className={className} innerClassName="p-4 sm:p-5">
+        <DashboardShell className={cn("hud-panel", className)} innerClassName="p-4 sm:p-5">
             <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="hud-panel-titlerow flex items-center gap-2">
                         {Icon ? (
-                            <span className="panel-icon size-8 shrink-0 rounded-lg">
+                            <span className="hud-panel-icon panel-icon size-8 shrink-0 rounded-lg">
                                 <Icon className="size-4" />
                             </span>
                         ) : null}
-                        <h2 className="font-jakarta text-lg font-extrabold uppercase leading-none tracking-tight">
+                        <h2 className="hud-panel-title font-jakarta text-lg font-extrabold uppercase leading-none tracking-tight">
                             {title}
                         </h2>
                     </div>
-                    {subtitle ? <p className="app-muted mt-2 text-sm leading-5">{subtitle}</p> : null}
+                    {subtitle ? <p className="hud-panel-subtitle app-muted mt-2 text-sm leading-5">{subtitle}</p> : null}
                 </div>
             </div>
             {children}
@@ -84,12 +84,14 @@ export function SelectField<T extends string>({
     options,
     onChange,
     className,
+    icon: Icon,
 }: {
     label: string
     value: T
     options: Array<{ value: T; label: string }>
     onChange: (value: T) => void
     className?: string
+    icon?: LucideIcon
 }) {
     const [open, setOpen] = useState(false)
     const current = options.find((option) => option.value === value) ?? options[0]
@@ -103,7 +105,10 @@ export function SelectField<T extends string>({
                 }
             }}
         >
-            <span className="field-label">{label}</span>
+            <span className="field-label">
+                {Icon ? <Icon className="field-label-icon" aria-hidden="true" /> : null}
+                {label}
+            </span>
             <button
                 type="button"
                 className="field-control flex w-full min-w-0 items-center justify-between gap-3 px-3 text-left text-xs font-bold uppercase tracking-[0.12em]"
